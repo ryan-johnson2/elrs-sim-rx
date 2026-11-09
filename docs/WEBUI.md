@@ -24,7 +24,9 @@ device's `help` output point at the hosted URL.
 ## Browser support
 
 Web Serial exists in Chrome, Edge and Opera on desktop (Windows, macOS, Linux, ChromeOS).
-Firefox and Safari do not implement it. A Tauri or Electron wrapper would cover those if
+Firefox and Safari do not implement it, and no phone browser does, so the page is
+desktop-only by nature and is laid out for a desktop window, including a half-width one
+next to a simulator. A Tauri or Electron wrapper would cover those if
 it ever matters; the page is written so the `Device` class is the only thing that would
 change.
 
@@ -54,5 +56,5 @@ firmware answers the flasher's Betaflight CLI queries and bridges the UART.
 
 `tools/test-web.sh` runs `tests/web/test_webui.mjs` in the official Playwright Docker
 image: loads the page in mock mode, exercises connect, mapping edits, power toggle,
-save, defaults, console and disconnect, checks for console errors and phone-width
-overflow, and writes screenshots to `tests/web/shots/`. No browser is needed on the host.
+save, defaults, console and disconnect, checks for console errors and overflow in a
+half-screen window, and writes screenshots to `tests/web/shots/`. No browser is needed on the host.

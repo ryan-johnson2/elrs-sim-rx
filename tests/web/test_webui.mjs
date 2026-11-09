@@ -100,12 +100,13 @@ await page.emulateMedia({ colorScheme: 'dark' });
 await page.waitForTimeout(300);
 await page.screenshot({ path: `${OUT}/03-connected-dark.png`, fullPage: true });
 
-// Narrow viewport
-await page.setViewportSize({ width: 400, height: 900 });
+// Half-screen window (page beside a simulator), still desktop only: Web Serial
+// does not exist on phone browsers.
+await page.setViewportSize({ width: 800, height: 900 });
 await page.waitForTimeout(300);
 const hasHScroll = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
-check('no horizontal scroll at 400px', !hasHScroll);
-await page.screenshot({ path: `${OUT}/04-mobile-dark.png`, fullPage: false });
+check('no horizontal scroll at 800px', !hasHScroll);
+await page.screenshot({ path: `${OUT}/04-half-screen-dark.png`, fullPage: false });
 
 // Disconnect
 await page.setViewportSize({ width: 1200, height: 900 });
