@@ -25,7 +25,8 @@ gamepad.
 | `firmware/` | Pico SDK + TinyUSB firmware in C |
 | `tests/` | Host-side unit tests for the hardware-independent core (CRSF parser, mapping, failsafe, LED sequencer) |
 | `tools/` | Docker build environment and helper scripts |
-| `docs/` | Hardware BOM, pin plan, LED behaviour spec |
+| `web/` | Single-file Web Serial configuration page |
+| `docs/` | Hardware BOM, pin plan, LED behaviour, firmware and web UI notes |
 
 ## Building
 
@@ -38,8 +39,23 @@ tools/test.sh         # host unit tests
 tools/shell.sh        # shell inside the container
 ```
 
-Flash: hold BOOT on the RP2040-Zero while plugging it in, then copy the `.uf2` onto the
-`RPI-RP2` drive that appears.
+Flash with `tools/flash.sh`. It reboots a running board into the bootloader over its
+serial port, or you hold BOOT on the RP2040-Zero while plugging it in. The UF2 is copied
+to the `RPI-RP2` drive, or loaded with picotool from the container if nothing auto-mounted.
+For non-root USB access, install `tools/99-elrs-sim-rx.rules` into `/etc/udev/rules.d/`.
+
+## Configuring
+
+Open `web/index.html` in Chrome or Edge (Web Serial), click Connect, and pick the device.
+It shows live channels, link stats, receiver power and bind controls, and the full
+channel-to-axis and channel-to-button mapping. Changes apply instantly; "Save to device"
+writes them to flash. `web/index.html?mock` runs against a simulated device.
+
+The same port also answers a plain terminal at any baud rate: type `help`.
+
+Receiver firmware and bind phrase are flashed through the dongle with the
+[ExpressLRS Web Flasher](https://expresslrs.github.io/web-flasher/) using the
+Betaflight passthrough method.
 
 ## Hardware
 

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELRS Sim RX</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5c6670; --line: #e1e5ea;
+    --accent: #2e7d32; --accent-text: #ffffff; --warn: #c77700; --bad: #b3261e; --bar: #2e7d32; --bar-bg: #e8ecef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111417; --panel: #1a1f24; --text: #e6e9ec; --muted: #9aa4ad; --line: #2a3138;
+      --accent: #4caf50; --accent-text: #0b0f12; --warn: #ffb74d; --bad: #ef5350; --bar: #4caf50; --bar-bg: #242b32;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111417; --panel: #1a1f24; --text: #e6e9ec; --muted: #9aa4ad; --line: #2a3138;
+    --accent: #4caf50; --accent-text: #0b0f12; --warn: #ffb74d; --bad: #ef5350; --bar: #4caf50; --bar-bg: #242b32;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 900px) { main { grid-template-columns: 1fr 1fr; } .wide { grid-column: 1 / -1; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  section h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  section h2 .spacer { flex: 1; }
+  button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.danger { color: var(--bad); border-color: var(--bad); }
+  button:disabled { opacity: .5; cursor: default; }
+  select, input[type=number], input[type=text] { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  .pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .pill.good .dot { background: var(--accent); } .pill.warn .dot { background: var(--warn); } .pill.bad .dot { background: var(--bad); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; }
+  .ch { display: grid; grid-template-columns: 34px 1fr 48px; gap: 8px; align-items: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .ch .bar { height: 10px; background: var(--bar-bg); border-radius: 5px; position: relative; overflow: hidden; }
+  .ch .bar i { position: absolute; top: 0; bottom: 0; background: var(--bar); border-radius: 5px; }
+  .ch .bar b { position: absolute; top: -2px; bottom: -2px; width: 1px; left: 50%; background: var(--muted); opacity: .5; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .console { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; height: 180px; overflow: auto; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+  .console .tx { color: var(--accent); }
+  .console .err { color: var(--bad); }
+  .dirty { color: var(--warn); font-size: 13px; }
+  .banner { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--warn); color: var(--warn); font-size: 14px; }
+  .hidden { display: none !important; }
+  footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ELRS Sim RX</h1>
+  <span id="pill-link" class="pill"><span class="dot"></span><span>no device</span></span>
+  <span id="pill-rx" class="pill"><span class="dot"></span><span>RX ?</span></span>
+  <button id="btn-connect" class="primary">Connect</button>
+  <button id="btn-disconnect" class="hidden">Disconnect</button>
+</header>
+
+<main>
+  <div id="no-serial" class="banner wide hidden">
+    This browser has no Web Serial support. Use Chrome, Edge or Opera on desktop, or run the device console from a terminal.
+  </div>
+
+  <section>
+    <h2>Status <span class="spacer"></span><span id="dirty" class="dirty hidden">unsaved changes</span></h2>
+    <dl class="kv">
+      <dt>Firmware</dt><dd id="st-version">–</dd>
+      <dt>Link</dt><dd id="st-link">–</dd>
+      <dt>LQ / RSSI / SNR</dt><dd id="st-lq">–</dd>
+      <dt>Packet mode</dt><dd id="st-rfmode">–</dd>
+      <dt>LED</dt><dd id="st-led">–</dd>
+      <dt>Failsafe</dt><dd id="st-fs">–</dd>
+      <dt>Frames ok / crc / timeout</dt><dd id="st-frames">–</dd>
+      <dt>HID sent / dropped</dt><dd id="st-hid">–</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Receiver</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="btn-rxpower">RX power: ?</button>
+      <button id="btn-bind">Bind (serial)</button>
+      <button id="btn-bindcycle" title="Three power cycles, for receivers that ignore the serial bind command">Bind (power cycle)</button>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label><input type="checkbox" id="cb-rxboot"> Power receiver on plug-in</label>
+    </div>
+    <div class="muted">
+      Receiver firmware and bind phrase are flashed with the
+      <a href="https://expresslrs.github.io/web-flasher/" target="_blank" rel="noopener">ExpressLRS Web Flasher</a>
+      using the <b>Betaflight passthrough</b> method. Disconnect here first, since only one page can hold the serial port.
+      <button id="btn-rxbootloader" class="hidden">RX bootloader</button>
+    </div>
+  </section>
+
+  <section class="wide">
+    <h2>Channels <span class="spacer"></span><span id="ch-rate" class="muted"></span></h2>
+    <div id="channels" class="channels"></div>
+  </section>
+
+  <section>
+    <h2>Axes</h2>
+    <table>
+      <thead><tr><th>Axis</th><th>Channel</th><th>Invert</th><th>Value</th></tr></thead>
+      <tbody id="axes"></tbody>
+    </table>
+    <div class="row" style="margin-top:10px">
+      <label>Throttle axis (failsafe low)
+        <select id="sel-throttle"></select>
+      </label>
+      <label>Failsafe after
+        <input type="number" id="in-failsafe" min="20" max="250" step="10" style="width:70px"> ms
+      </label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Buttons <span class="spacer"></span>
+      <button id="btn-buttons-toggle">Show all 36</button>
+    </h2>
+    <table>
+      <thead><tr><th>#</th><th>Channel</th><th>Position</th><th>State</th></tr></thead>
+      <tbody id="buttons"></tbody>
+    </table>
+    <p class="muted">Default: channels 5 to 16 each give three buttons (low, mid, high). In ELRS Hybrid or Wide switch mode, channels 15 and 16 carry LQ and RSSI; set buttons 30 to 35 to "none" or use Full Res 16ch.</p>
+  </section>
+
+  <section class="wide">
+    <h2>Config
+      <span class="spacer"></span>
+      <button id="btn-save" class="primary">Save to device</button>
+      <button id="btn-defaults">Load defaults</button>
+      <button id="btn-reboot">Reboot</button>
+      <button id="btn-dfu" class="danger" title="Reboot into UF2 bootloader for a firmware update">Firmware update mode</button>
+    </h2>
+    <div class="muted">Mapping changes apply instantly on the device but are lost at reboot until saved.</div>
+  </section>
+
+  <section class="wide">
+    <h2>Console <span class="spacer"></span><button id="btn-clear">Clear</button></h2>
+    <div id="console" class="console"></div>
+    <form id="form-cmd" class="row" style="margin-top:8px">
+      <input type="text" id="in-cmd" placeholder="command, e.g. status" style="flex:1" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+  </section>
+</main>
+
+<footer>
+  Web Serial, Chromium browsers only. Nothing leaves your machine. <a href="#" id="link-mock">Try with a simulated device</a>.
+</footer>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Device transport: Web Serial, line-oriented, JSON replies.
+// `stream` lines (have "ch") are routed to onChannels; everything else JSON
+// resolves the oldest pending command. Non-JSON lines go to the console only.
+// ---------------------------------------------------------------------------
+class Device {
+  constructor() {
+    this.port = null; this.reader = null; this.writer = null;
+    this.pending = []; this.buf = '';
+    this.onChannels = () => {}; this.onLine = () => {}; this.onClose = () => {};
+  }
+  get connected() { return !!this.port; }
+  async connect(port) {
+    await port.open({ baudRate: 115200 });
+    this.port = port;
+    this.writer = port.writable.getWriter();
+    this.readLoop();
+  }
+  async readLoop() {
+    const dec = new TextDecoder();
+    try {
+      this.reader = this.port.readable.getReader();
+      for (;;) {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        this.buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = this.buf.indexOf('\n')) >= 0) {
+          const line = this.buf.slice(0, i).replace(/\r$/, '');
+          this.buf = this.buf.slice(i + 1);
+          if (line) this.handleLine(line);
+        }
+      }
+    } catch (e) {
+      this.onLine('read error: ' + e.message, 'err');
+    } finally {
+      await this.teardown();
+    }
+  }
+  handleLine(line) {
+    this.onLine(line, 'rx');
+    if (line[0] !== '{') return;
+    let obj;
+    try { obj = JSON.parse(line); } catch { return; }
+    if (obj.ch) { this.onChannels(obj); return; }
+    const p = this.pending.shift();
+    if (p) { clearTimeout(p.timer); p.resolve(obj); }
+  }
+  send(cmd, { expectReply = true, timeoutMs = 2000 } = {}) {
+    if (!this.writer) return Promise.reject(new Error('not connected'));
+    this.onLine(cmd, 'tx');
+    const data = new TextEncoder().encode(cmd + '\n');
+    const written = this.writer.write(data);
+    if (!expectReply) return written;
+    return new Promise((resolve, reject) => {
+      const entry = { resolve, reject };
+      entry.timer = setTimeout(() => {
+        const idx = this.pending.indexOf(entry);
+        if (idx >= 0) this.pending.splice(idx, 1);
+        reject(new Error('timeout: ' + cmd));
+      }, timeoutMs);
+      this.pending.push(entry);
+    });
+  }
+  async disconnect() {
+    try { await this.send('stream off', { expectReply: false }); } catch {}
+    try { await this.reader?.cancel(); } catch {}
+  }
+  async teardown() {
+    try { this.reader?.releaseLock(); } catch {}
+    try { this.writer?.releaseLock(); } catch {}
+    try { await this.port?.close(); } catch {}
+    this.port = this.reader = this.writer = null;
+    for (const p of this.pending) { clearTimeout(p.timer); p.reject(new Error('disconnected')); }
+    this.pending = [];
+    this.onClose();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mock device for UI work without hardware. Same line protocol.
+// ---------------------------------------------------------------------------
+class MockDevice extends Device {
+  constructor() {
+    super();
+    this.state = { rx_power: true, rxboot: true, dirty: false, stream: false, interval: 50, fs: 100,
+      axes: [1,2,3,4,5,6,7,8], invert: 0, buttons: [], throttle: 2 };
+    for (let i = 0; i < 36; i++) this.state.buttons.push({ ch: 5 + Math.floor(i / 3), level: ['low','mid','high'][i % 3] });
+    this.t = 0;
+  }
+  get connected() { return this._on; }
+  async connect() { this._on = true; this.timer = setInterval(() => this.tick(), this.state.interval); }
+  tick() {
+    if (!this.state.stream || !this.state.rx_power) return;
+    this.t += this.state.interval / 1000;
+    const ch = [];
+    for (let i = 0; i < 16; i++) {
+      let v = 992;
+      if (i === 0) v = 992 + Math.round(600 * Math.sin(this.t * 1.3));
+      if (i === 1) v = 992 + Math.round(500 * Math.cos(this.t * 0.9));
+      if (i === 2) v = 172 + Math.round((1811 - 172) * (0.5 + 0.5 * Math.sin(this.t * 0.4)));
+      if (i === 3) v = 992 + Math.round(300 * Math.sin(this.t * 2.1));
+      if (i === 4) v = Math.floor(this.t / 2) % 2 ? 1811 : 172;
+      if (i === 5) v = [172, 992, 1811][Math.floor(this.t / 1.5) % 3];
+      ch.push(v);
+    }
+    this.handleLine(JSON.stringify({ ch, lq: 99, rssi: -42, snr: 11, rfmode: 6, link: true }));
+  }
+  reply(obj) { setTimeout(() => this.handleLine(JSON.stringify(obj)), 15); }
+  send(cmd, opts = {}) {
+    this.onLine(cmd, 'tx');
+    const a = cmd.trim().split(/\s+/); const s = this.state;
+    const p = opts.expectReply === false ? Promise.resolve() : new Promise((res, rej) => {
+      const e = { resolve: res, reject: rej, timer: setTimeout(() => rej(new Error('timeout')), 2000) };
+      this.pending.push(e);
+    });
+    switch (a[0]) {
+      case 'version': this.reply({ product: 'ELRS Sim RX', version: 'mock' }); break;
+      case 'status': this.reply({ product: 'ELRS Sim RX', version: 'mock', uptime_ms: Math.round(this.t * 1000),
+        rx_power: s.rx_power, link: s.rx_power, failsafe: !s.rx_power, led: s.rx_power ? 'connected' : 'off',
+        lq: 99, rssi: -42, snr: 11, rfmode: 6, frames_ok: Math.round(this.t * 250), frames_crc_err: 0, frames_timeout: 1,
+        uart_overruns: 0, reports_sent: Math.round(this.t * 250), reports_dropped: 3, last_rc_age_ms: 3, config_dirty: s.dirty }); break;
+      case 'map': this.reply({ axes: s.axes.map((c, i) => ({ name: ['X','Y','Z','Rx','Ry','Rz','Slider','Dial'][i], ch: c, invert: !!(s.invert >> i & 1) })),
+        buttons: s.buttons, throttle_axis: s.throttle, rx_power_on_boot: s.rxboot, failsafe_ms: s.fs }); break;
+      case 'stream': s.stream = a[1] === 'on'; if (a[2]) s.interval = +a[2]; this.reply({ ok: true }); break;
+      case 'axis': s.axes[+a[1]] = +a[2]; if (a[3] === 'invert') s.invert |= 1 << +a[1]; else s.invert &= ~(1 << +a[1]); s.dirty = true; this.reply({ ok: true }); break;
+      case 'button': s.buttons[+a[1]] = { ch: +a[2], level: a[3] }; s.dirty = true; this.reply({ ok: true }); break;
+      case 'throttle': s.throttle = a[1] === 'none' ? -1 : +a[1]; s.dirty = true; this.reply({ ok: true }); break;
+      case 'failsafe': s.fs = +a[1]; s.dirty = true; this.reply({ ok: true }); break;
+      case 'rxpower': s.rx_power = a[1] === 'on' ? true : a[1] === 'off' ? false : !s.rx_power; this.reply({ ok: true, rx_power: s.rx_power }); break;
+      case 'rxboot': s.rxboot = a[1] === 'on'; s.dirty = true; this.reply({ ok: true }); break;
+      case 'save': s.dirty = false; this.reply({ ok: true }); break;
+      case 'defaults': Object.assign(s, { axes: [1,2,3,4,5,6,7,8], invert: 0, throttle: 2, fs: 100, rxboot: true, dirty: true });
+        s.buttons = []; for (let i = 0; i < 36; i++) s.buttons.push({ ch: 5 + Math.floor(i / 3), level: ['low','mid','high'][i % 3] });
+        this.reply({ ok: true }); break;
+      case 'bind': case 'bindcycle': case 'rxbootloader': case 'reboot': case 'dfu': this.reply({ ok: true }); break;
+      default: this.reply({ ok: false, error: 'unknown command (mock)' });
+    }
+    return p;
+  }
+  async disconnect() { clearInterval(this.timer); this._on = false; await this.teardown(); }
+}
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const AXIS_NAMES = ['X', 'Y', 'Z', 'Rx', 'Ry', 'Rz', 'Slider', 'Dial'];
+const RF_MODES = { 0: '4 Hz', 1: '25 Hz', 2: '50 Hz', 3: '100 Hz', 4: '100 Hz Full', 5: '150 Hz', 6: '200 Hz', 7: '250 Hz', 8: '333 Hz Full', 9: '500 Hz', 10: 'D250', 11: 'D500', 12: 'F500', 13: 'F1000' };
+
+let dev = null;
+let map = null;
+let lastCh = null;
+let frameTimes = [];
+let showAllButtons = false;
+let statusTimer = null;
+
+function log(line, cls) {
+  const el = $('console');
+  const div = document.createElement('div');
+  if (cls) div.className = cls;
+  div.textContent = (cls === 'tx' ? '> ' : '') + line;
+  el.appendChild(div);
+  while (el.childElementCount > 400) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setPill(id, cls, text) {
+  const p = $(id); p.className = 'pill ' + cls; p.lastElementChild.textContent = text;
+}
+
+function chToUs(v) { return Math.round((v - 992) * 5 / 8 + 1500); }
+function chToAxis(v, inv) { let a = Math.round((v - 992) * 32767 / 819); a = Math.max(-32767, Math.min(32767, a)); return inv ? -a : a; }
+function pressed(v, level) { const us = chToUs(v); return level === 'low' ? us < 1300 : level === 'mid' ? us >= 1300 && us <= 1700 : level === 'high' ? us > 1700 : false; }
+
+function buildChannels() {
+  const root = $('channels'); root.innerHTML = '';
+  for (let i = 0; i < 16; i++) {
+    const d = document.createElement('div'); d.className = 'ch';
+    d.innerHTML = `<span>ch${i + 1}</span><div class="bar"><b></b><i id="chbar-${i}"></i></div><span id="chval-${i}">–</span>`;
+    root.appendChild(d);
+  }
+}
+
+function channelSelect(id, value) {
+  const s = document.createElement('select'); s.id = id;
+  const none = document.createElement('option'); none.value = 0; none.textContent = 'none'; s.appendChild(none);
+  for (let c = 1; c <= 16; c++) { const o = document.createElement('option'); o.value = c; o.textContent = 'ch' + c; s.appendChild(o); }
+  s.value = value; return s;
+}
+
+function renderMap() {
+  if (!map) return;
+  const axes = $('axes'); axes.innerHTML = '';
+  map.axes.forEach((a, i) => {
+    const tr = document.createElement('tr');
+    const tdN = document.createElement('td'); tdN.textContent = a.name;
+    const tdC = document.createElement('td'); const sel = channelSelect('ax-ch-' + i, a.ch); tdC.appendChild(sel);
+    const tdI = document.createElement('td'); const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = a.invert; cb.id = 'ax-inv-' + i; tdI.appendChild(cb);
+    const tdV = document.createElement('td'); tdV.className = 'num'; tdV.id = 'ax-val-' + i; tdV.textContent = '–';
+    tr.append(tdN, tdC, tdI, tdV); axes.appendChild(tr);
+    const apply = () => cmd(`axis ${i} ${sel.value}${cb.checked ? ' invert' : ''}`).then(refreshMap);
+    sel.onchange = apply; cb.onchange = apply;
+  });
+
+  const thr = $('sel-throttle'); thr.innerHTML = '';
+  const none = document.createElement('option'); none.value = -1; none.textContent = 'none'; thr.appendChild(none);
+  AXIS_NAMES.forEach((n, i) => { const o = document.createElement('option'); o.value = i; o.textContent = n; thr.appendChild(o); });
+  thr.value = map.throttle_axis;
+  thr.onchange = () => cmd(`throttle ${thr.value < 0 ? 'none' : thr.value}`).then(refreshMap);
+
+  $('in-failsafe').value = map.failsafe_ms;
+  $('in-failsafe').onchange = (e) => cmd(`failsafe ${e.target.value}`).then(refreshMap);
+  $('cb-rxboot').checked = map.rx_power_on_boot;
+  $('cb-rxboot').onchange = (e) => cmd(`rxboot ${e.target.checked ? 'on' : 'off'}`).then(refreshMap);
+
+  const bt = $('buttons'); bt.innerHTML = '';
+  map.buttons.forEach((b, i) => {
+    if (!showAllButtons && i >= 12 && !(b.ch && b.ch !== 5 + Math.floor(i / 3))) return;
+    const tr = document.createElement('tr');
+    const tdN = document.createElement('td'); tdN.textContent = i + 1;
+    const tdC = document.createElement('td'); const sel = channelSelect('bt-ch-' + i, b.ch); tdC.appendChild(sel);
+    const tdL = document.createElement('td'); const lv = document.createElement('select'); lv.id = 'bt-lv-' + i;
+    for (const l of ['none', 'low', 'mid', 'high']) { const o = document.createElement('option'); o.value = l; o.textContent = l; lv.appendChild(o); }
+    lv.value = b.level; tdL.appendChild(lv);
+    const tdS = document.createElement('td'); tdS.id = 'bt-st-' + i; tdS.textContent = '–';
+    tr.append(tdN, tdC, tdL, tdS); bt.appendChild(tr);
+    const apply = () => cmd(`button ${i} ${sel.value} ${lv.value}`).then(refreshMap);
+    sel.onchange = apply; lv.onchange = apply;
+  });
+  $('btn-buttons-toggle').textContent = showAllButtons ? 'Show first 12' : 'Show all 36';
+}
+
+function renderChannels(obj) {
+  lastCh = obj.ch;
+  const now = performance.now(); frameTimes.push(now); while (frameTimes.length && now - frameTimes[0] > 2000) frameTimes.shift();
+  $('ch-rate').textContent = `${(frameTimes.length / 2).toFixed(0)} updates/s · LQ ${obj.lq} · ${obj.rssi} dBm`;
+  obj.ch.forEach((v, i) => {
+    const pct = Math.max(0, Math.min(1, (v - 172) / (1811 - 172)));
+    const bar = $('chbar-' + i); const mid = 0.5;
+    if (pct >= mid) { bar.style.left = '50%'; bar.style.width = `${(pct - mid) * 100}%`; }
+    else { bar.style.left = `${pct * 100}%`; bar.style.width = `${(mid - pct) * 100}%`; }
+    $('chval-' + i).textContent = v;
+  });
+  if (map) {
+    map.axes.forEach((a, i) => { const el = $('ax-val-' + i); if (el) el.textContent = a.ch ? chToAxis(obj.ch[a.ch - 1], a.invert) : 0; });
+    map.buttons.forEach((b, i) => { const el = $('bt-st-' + i); if (el) el.textContent = b.ch && pressed(obj.ch[b.ch - 1], b.level) ? '● pressed' : ''; });
+  }
+  setPill('pill-link', obj.link ? 'good' : 'warn', obj.link ? `link · LQ ${obj.lq}` : 'no link');
+}
+
+function renderStatus(s) {
+  $('st-version').textContent = `${s.product} ${s.version}`;
+  $('st-link').textContent = s.link ? `connected (last frame ${s.last_rc_age_ms} ms ago)` : 'no link';
+  $('st-lq').textContent = `${s.lq} % / ${s.rssi} dBm / ${s.snr} dB`;
+  $('st-rfmode').textContent = RF_MODES[s.rfmode] ?? s.rfmode;
+  $('st-led').textContent = s.led;
+  $('st-fs').textContent = s.failsafe ? 'ACTIVE' : 'clear';
+  $('st-frames').textContent = `${s.frames_ok} / ${s.frames_crc_err} / ${s.frames_timeout}`;
+  $('st-hid').textContent = `${s.reports_sent} / ${s.reports_dropped}`;
+  $('dirty').classList.toggle('hidden', !s.config_dirty);
+  $('btn-rxpower').textContent = `RX power: ${s.rx_power ? 'ON' : 'OFF'}`;
+  setPill('pill-rx', s.rx_power ? 'good' : '', s.rx_power ? 'RX on' : 'RX off');
+  if (!s.rx_power) setPill('pill-link', '', 'RX off');
+  else if (!s.link) setPill('pill-link', 'warn', 'no link');
+}
+
+async function cmd(c) {
+  if (!dev?.connected) return;
+  try {
+    const r = await dev.send(c);
+    if (r && r.ok === false) log('error: ' + r.error, 'err');
+    return r;
+  } catch (e) { log(e.message, 'err'); }
+}
+
+async function refreshMap() { const m = await cmd('map'); if (m) { map = m; renderMap(); } }
+async function refreshStatus() { const s = await cmd('status'); if (s) renderStatus(s); }
+
+function setConnectedUi(on) {
+  $('btn-connect').classList.toggle('hidden', on);
+  $('btn-disconnect').classList.toggle('hidden', !on);
+  for (const b of document.querySelectorAll('main button, main select, main input')) b.disabled = !on;
+  if (!on) { setPill('pill-link', '', 'no device'); setPill('pill-rx', '', 'RX ?'); $('ch-rate').textContent = ''; }
+}
+
+async function connectWith(device, port) {
+  dev = device;
+  dev.onLine = log;
+  dev.onChannels = renderChannels;
+  dev.onClose = () => { clearInterval(statusTimer); setConnectedUi(false); dev = null; log('disconnected'); };
+  try {
+    await dev.connect(port);
+  } catch (e) { log('connect failed: ' + e.message, 'err'); dev = null; return; }
+  setConnectedUi(true);
+  await cmd('stream off');
+  await refreshMap();
+  await refreshStatus();
+  await cmd('stream on 50');
+  statusTimer = setInterval(refreshStatus, 1000);
+}
+
+$('btn-connect').onclick = async () => {
+  if (!('serial' in navigator)) { $('no-serial').classList.remove('hidden'); return; }
+  let port;
+  try {
+    port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x1209 }, { usbVendorId: 0x2e8a }] });
+  } catch { return; }
+  await connectWith(new Device(), port);
+};
+$('btn-disconnect').onclick = () => dev?.disconnect();
+$('link-mock').onclick = (e) => { e.preventDefault(); if (dev) return; connectWith(new MockDevice()); };
+
+$('btn-rxpower').onclick = () => cmd('rxpower toggle').then(refreshStatus);
+$('btn-bind').onclick = () => cmd('bind').then(refreshStatus);
+$('btn-bindcycle').onclick = () => cmd('bindcycle').then(refreshStatus);
+$('btn-rxbootloader').onclick = () => cmd('rxbootloader');
+$('btn-save').onclick = () => cmd('save').then(refreshStatus);
+$('btn-defaults').onclick = () => cmd('defaults').then(() => { refreshMap(); refreshStatus(); });
+$('btn-reboot').onclick = () => cmd('reboot').then(() => dev?.disconnect());
+$('btn-dfu').onclick = () => { if (confirm('Reboot into firmware update mode? The device will reappear as a USB drive named RPI-RP2.')) cmd('dfu').then(() => dev?.disconnect()); };
+$('btn-buttons-toggle').onclick = () => { showAllButtons = !showAllButtons; renderMap(); };
+$('btn-clear').onclick = () => { $('console').innerHTML = ''; };
+$('form-cmd').onsubmit = (e) => { e.preventDefault(); const v = $('in-cmd').value.trim(); if (v) { cmd(v); $('in-cmd').value = ''; } };
+
+buildChannels();
+setConnectedUi(false);
+if (!('serial' in navigator)) $('no-serial').classList.remove('hidden');
+if (location.search.includes('mock')) connectWith(new MockDevice());
+</script>
+</body>
+</html>

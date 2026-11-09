@@ -1,0 +1,8 @@
+# udev rules for ELRS Sim RX development.
+# Install: sudo cp tools/99-elrs-sim-rx.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+#
+# RP2040 in BOOTSEL (picotool access without root)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="0003", MODE="0666", TAG+="uaccess"
+# ELRS Sim RX running firmware (pid.codes test PID; update when a real PID is allocated)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="0001", MODE="0666", TAG+="uaccess"
+SUBSYSTEM=="tty",  ATTRS{idVendor}=="1209", ATTRS{idProduct}=="0001", MODE="0666", TAG+="uaccess", SYMLINK+="elrs-sim-rx"
