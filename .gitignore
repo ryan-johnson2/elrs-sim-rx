@@ -1,0 +1,10 @@
+firmware/build/
+tests/build/
+*.uf2
+*.elf
+*.bin
+*.map
+.cache/
+compile_commands.json
+__pycache__/
+node_modules/

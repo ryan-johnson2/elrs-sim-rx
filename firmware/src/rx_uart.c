@@ -1,0 +1,120 @@
+#include "rx_uart.h"
+#include "board.h"
+#include "pico/stdlib.h"
+#include "hardware/uart.h"
+#include "hardware/irq.h"
+#include "hardware/gpio.h"
+#include "hardware/sync.h"
+
+#define RING_SIZE 1024   // power of two
+
+static uint8_t ring[RING_SIZE];
+static volatile uint16_t ring_head;
+static volatile uint16_t ring_tail;
+static volatile size_t overruns;
+static bool enabled;
+static uint32_t current_baud;
+
+static void on_uart_rx(void)
+{
+    while (uart_is_readable(CRSF_UART)) {
+        uint8_t b = uart_getc(CRSF_UART);
+        uint16_t next = (uint16_t)((ring_head + 1) & (RING_SIZE - 1));
+        if (next != ring_tail) {
+            ring[ring_head] = b;
+            __dmb();
+            ring_head = next;
+        } else {
+            overruns++;
+        }
+    }
+}
+
+static void pins_high_z(void)
+{
+    gpio_init(PIN_CRSF_TX);
+    gpio_init(PIN_CRSF_RX);
+    gpio_set_dir(PIN_CRSF_TX, GPIO_IN);
+    gpio_set_dir(PIN_CRSF_RX, GPIO_IN);
+    gpio_disable_pulls(PIN_CRSF_TX);
+    gpio_disable_pulls(PIN_CRSF_RX);
+}
+
+void rx_uart_init(void)
+{
+    ring_head = ring_tail = 0;
+    overruns = 0;
+    enabled = false;
+    current_baud = CRSF_BAUD;
+    pins_high_z();
+}
+
+void rx_uart_enable(uint32_t baud)
+{
+    if (enabled) {
+        rx_uart_set_baud(baud);
+        return;
+    }
+    ring_head = ring_tail = 0;
+    uart_init(CRSF_UART, baud);
+    current_baud = uart_set_baudrate(CRSF_UART, baud);
+    uart_set_format(CRSF_UART, 8, 1, UART_PARITY_NONE);
+    uart_set_fifo_enabled(CRSF_UART, true);
+    gpio_set_function(PIN_CRSF_TX, GPIO_FUNC_UART);
+    gpio_set_function(PIN_CRSF_RX, GPIO_FUNC_UART);
+    gpio_pull_up(PIN_CRSF_RX);   // idle-high while the RX boots
+    irq_set_exclusive_handler(CRSF_UART_IRQ, on_uart_rx);
+    irq_set_enabled(CRSF_UART_IRQ, true);
+    uart_set_irq_enables(CRSF_UART, true, false);
+    enabled = true;
+}
+
+void rx_uart_disable(void)
+{
+    if (!enabled) return;
+    uart_set_irq_enables(CRSF_UART, false, false);
+    irq_set_enabled(CRSF_UART_IRQ, false);
+    uart_deinit(CRSF_UART);
+    pins_high_z();
+    ring_head = ring_tail = 0;
+    enabled = false;
+}
+
+bool rx_uart_is_enabled(void)
+{
+    return enabled;
+}
+
+void rx_uart_set_baud(uint32_t baud)
+{
+    if (!enabled || baud == 0) return;
+    uart_tx_wait_blocking(CRSF_UART);
+    current_baud = uart_set_baudrate(CRSF_UART, baud);
+}
+
+uint32_t rx_uart_get_baud(void)
+{
+    return current_baud;
+}
+
+size_t rx_uart_read(uint8_t *buf, size_t max)
+{
+    size_t n = 0;
+    while (n < max && ring_tail != ring_head) {
+        __dmb();
+        buf[n++] = ring[ring_tail];
+        ring_tail = (uint16_t)((ring_tail + 1) & (RING_SIZE - 1));
+    }
+    return n;
+}
+
+void rx_uart_write(const uint8_t *buf, size_t len)
+{
+    if (!enabled) return;
+    uart_write_blocking(CRSF_UART, buf, len);
+}
+
+size_t rx_uart_rx_overruns(void)
+{
+    return overruns;
+}

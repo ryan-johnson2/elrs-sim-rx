@@ -1,0 +1,263 @@
+// ELRS Sim RX: ExpressLRS receiver -> USB HID joystick for FPV simulators.
+//
+// Main loop responsibilities:
+//   - pump TinyUSB
+//   - drain the CRSF UART ring buffer into the parser
+//   - on each RC frame, build and send a HID report
+//   - run failsafe, LED, button, RX power and console tasks
+
+#include "pico/stdlib.h"
+#include "pico/bootrom.h"
+#include "hardware/gpio.h"
+#include "hardware/watchdog.h"
+#include "tusb.h"
+
+#include "app.h"
+#include "board.h"
+#include "cli.h"
+#include "rx_uart.h"
+#include "rx_power.h"
+#include "config_store.h"
+
+app_t app;
+
+uint32_t app_now_ms(void)
+{
+    return to_ms_since_boot(get_absolute_time());
+}
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+void app_send_rx_command(char c0, char c1)
+{
+    uint8_t frame[8];
+    size_t n = crsf_build_rx_command(frame, c0, c1);
+    rx_uart_write(frame, n);
+}
+
+void app_request_bind(uint32_t now_ms)
+{
+    app.bind_requested_ms = now_ms;
+    app.bind_pattern_until_ms = now_ms + BIND_PATTERN_TIMEOUT_MS;
+    if (!rx_power_is_on()) {
+        rx_power_set(true, now_ms);
+        app.bind_pending = true;          // send once the RX has booted
+    } else if ((uint32_t)(now_ms - rx_power_on_since_ms()) < BIND_AFTER_POWER_MS) {
+        app.bind_pending = true;
+    } else {
+        app_send_rx_command('b', 'd');
+        app.bind_pending = false;
+    }
+}
+
+void app_request_bind_cycle(uint32_t now_ms)
+{
+    app.bind_pending = false;
+    app.bind_requested_ms = now_ms;
+    app.bind_pattern_until_ms = now_ms + BIND_PATTERN_TIMEOUT_MS;
+    rx_power_start_bind_cycle(now_ms);
+}
+
+void app_save_config(void)
+{
+    config_finalize(&app.config);
+    if (config_store_save(&app.config)) {
+        app.config_dirty = false;
+    }
+}
+
+void app_reboot_to_bootsel(void)
+{
+    rx_power_set(false, app_now_ms());
+    reset_usb_boot(0, 0);
+}
+
+// ---------------------------------------------------------------------------
+// HID
+// ---------------------------------------------------------------------------
+static bool send_report(const hid_report_t *r)
+{
+    if (!tud_hid_ready()) {
+        app.reports_dropped++;
+        return false;
+    }
+    bool ok = tud_hid_report(0, r, sizeof(*r));
+    if (ok) {
+        app.last_report = *r;
+        app.reports_sent++;
+    } else {
+        app.reports_dropped++;
+    }
+    return ok;
+}
+
+// TinyUSB HID callbacks ------------------------------------------------------
+uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type,
+                               uint8_t *buffer, uint16_t reqlen)
+{
+    (void)instance; (void)report_id;
+    if (report_type != HID_REPORT_TYPE_INPUT) return 0;
+    uint16_t n = sizeof(app.last_report);
+    if (n > reqlen) n = reqlen;
+    memcpy(buffer, &app.last_report, n);
+    return n;
+}
+
+void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type,
+                           uint8_t const *buffer, uint16_t bufsize)
+{
+    (void)instance; (void)report_id; (void)report_type; (void)buffer; (void)bufsize;
+}
+
+// TinyUSB CDC callbacks ------------------------------------------------------
+void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const *coding)
+{
+    (void)itf;
+    cli_on_line_coding(coding->bit_rate);
+}
+
+// ---------------------------------------------------------------------------
+// LED state selection (see docs/LED-BEHAVIOUR.md)
+// ---------------------------------------------------------------------------
+static void update_led(uint32_t now_ms)
+{
+    led_state_t s;
+    const crsf_t *c = &app.crsf;
+    bool rc_fresh   = c->have_rc   && (uint32_t)(now_ms - c->last_rc_ms)    < app.failsafe.timeout_ms;
+    bool any_fresh  = (c->have_rc || c->have_link) && (uint32_t)(now_ms - c->last_frame_ms) < RX_SILENT_MS;
+    bool booting    = (uint32_t)(now_ms - rx_power_on_since_ms()) < RX_BOOT_GRACE_MS;
+    bool bind_shown = app.bind_requested_ms != 0 && (int32_t)(app.bind_pattern_until_ms - now_ms) > 0;
+
+    if (!rx_power_is_on() && !rx_power_bind_cycle_active()) {
+        s = LED_STATE_OFF;
+    } else if (app.passthrough) {
+        s = LED_STATE_SERIAL_UPDATE;
+    } else if (rc_fresh) {
+        s = LED_STATE_CONNECTED;
+        app.bind_requested_ms = 0;        // bound and connected, pattern done
+    } else if (bind_shown) {
+        s = LED_STATE_BINDING;
+    } else if (any_fresh || booting || rx_power_bind_cycle_active()) {
+        s = LED_STATE_DISCONNECTED;
+    } else {
+        s = LED_STATE_WIFI;
+    }
+
+    if (s != app.led_state) {
+        app.led_state = s;
+        switch (s) {
+        case LED_STATE_OFF:           led_seq_set_solid(&app.led, false); break;
+        case LED_STATE_CONNECTED:     led_seq_set_solid(&app.led, true);  break;
+        case LED_STATE_DISCONNECTED:  led_seq_set_pattern(&app.led, LEDSEQ_DISCONNECTED,  sizeof(LEDSEQ_DISCONNECTED),  now_ms); break;
+        case LED_STATE_BINDING:       led_seq_set_pattern(&app.led, LEDSEQ_BINDING,       sizeof(LEDSEQ_BINDING),       now_ms); break;
+        case LED_STATE_WIFI:          led_seq_set_pattern(&app.led, LEDSEQ_WIFI_UPDATE,   sizeof(LEDSEQ_WIFI_UPDATE),   now_ms); break;
+        case LED_STATE_SERIAL_UPDATE: led_seq_set_pattern(&app.led, LEDSEQ_SERIAL_UPDATE, sizeof(LEDSEQ_SERIAL_UPDATE), now_ms); break;
+        }
+    }
+
+    gpio_put(PIN_LED, led_seq_update(&app.led, now_ms));
+}
+
+// ---------------------------------------------------------------------------
+// Button
+// ---------------------------------------------------------------------------
+static void update_button(uint32_t now_ms)
+{
+    bool pressed = !gpio_get(PIN_BUTTON);   // active low
+    switch (button_update(&app.button, pressed, now_ms)) {
+    case BUTTON_EVENT_SHORT:
+        rx_power_set(!rx_power_is_on(), now_ms);
+        app.bind_requested_ms = 0;
+        break;
+    case BUTTON_EVENT_LONG:
+        app_request_bind(now_ms);
+        break;
+    default:
+        break;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+int main(void)
+{
+    // GPIO
+    gpio_init(PIN_LED);
+    gpio_set_dir(PIN_LED, GPIO_OUT);
+    gpio_put(PIN_LED, 0);
+
+    gpio_init(PIN_BUTTON);
+    gpio_set_dir(PIN_BUTTON, GPIO_IN);
+    gpio_pull_up(PIN_BUTTON);
+
+    // Config
+    if (!config_store_load(&app.config)) {
+        config_defaults(&app.config);
+        app.config_dirty = true;
+    }
+
+    // Core state
+    app.boot_ms = app_now_ms();
+    crsf_init(&app.crsf);
+    failsafe_init(&app.failsafe, app.config.failsafe_ms, FAILSAFE_RETRY_MS);
+    led_seq_init(&app.led);
+    app.led_state = LED_STATE_OFF;
+    button_init(&app.button, BUTTON_DEBOUNCE_MS, BUTTON_LONG_MS);
+    mapping_failsafe_report(&app.config, &app.last_report);
+
+    // Receiver power + UART
+    rx_power_init(app.config.rx_power_on_boot != 0);
+
+    // USB + console
+    tud_init(0);
+    cli_init();
+
+    uint8_t buf[128];
+    hid_report_t report;
+
+    while (true) {
+        tud_task();
+        uint32_t now = app_now_ms();
+
+        rx_power_task(now);
+
+        // Deferred bind command once the RX has had time to boot.
+        if (app.bind_pending && rx_power_is_on() && !rx_power_bind_cycle_active() &&
+            (uint32_t)(now - rx_power_on_since_ms()) >= BIND_AFTER_POWER_MS) {
+            app_send_rx_command('b', 'd');
+            app.bind_pending = false;
+        }
+
+        // CRSF in -> HID out. In passthrough the console owns the UART.
+        if (!app.passthrough) {
+            size_t n = rx_uart_read(buf, sizeof(buf));
+            for (size_t i = 0; i < n; i++) {
+                if (crsf_feed(&app.crsf, buf[i], now) == CRSF_TYPE_RC_CHANNELS) {
+                    mapping_build_report(&app.config, app.crsf.channels, &report);
+                    send_report(&report);
+                }
+            }
+        }
+
+        // Failsafe
+        failsafe_input_t in = {
+            .now_ms       = now,
+            .rx_powered   = rx_power_is_on() && !app.passthrough,
+            .have_rc      = app.crsf.have_rc,
+            .last_rc_ms   = app.crsf.last_rc_ms,
+            .have_link    = app.crsf.have_link,
+            .last_link_ms = app.crsf.last_link_ms,
+            .lq           = app.crsf.link.uplink_lq,
+        };
+        if (failsafe_update(&app.failsafe, &in)) {
+            mapping_failsafe_report(&app.config, &report);
+            failsafe_report_sent(&app.failsafe, send_report(&report));
+        }
+
+        update_button(now);
+        update_led(now);
+        cli_task(now);
+    }
+}
