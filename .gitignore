@@ -8,3 +8,5 @@ tests/build/
 compile_commands.json
 __pycache__/
 node_modules/
+tests/web/shots/
+tests/web/.cache/

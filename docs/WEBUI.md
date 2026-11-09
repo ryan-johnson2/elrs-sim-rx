@@ -49,3 +49,10 @@ Only one page can hold a serial port. To update the receiver or change the bind 
 disconnect here, open the ExpressLRS Web Flasher, pick the receiver target, choose the
 "Betaflight passthrough" flashing method, and select the ELRS Sim RX serial port. The
 firmware answers the flasher's Betaflight CLI queries and bridges the UART.
+
+## Testing
+
+`tools/test-web.sh` runs `tests/web/test_webui.mjs` in the official Playwright Docker
+image: loads the page in mock mode, exercises connect, mapping edits, power toggle,
+save, defaults, console and disconnect, checks for console errors and phone-width
+overflow, and writes screenshots to `tests/web/shots/`. No browser is needed on the host.

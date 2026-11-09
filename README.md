@@ -36,6 +36,8 @@ Nothing needs to be installed on the host except Docker.
 ```
 tools/build.sh        # firmware -> firmware/build/elrs_sim_rx.uf2
 tools/test.sh         # host unit tests
+tools/test-web.sh     # browser test of the web UI against the mock device (Playwright image)
+tools/flash.sh        # flash a connected board
 tools/shell.sh        # shell inside the container
 ```
 
