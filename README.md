@@ -26,7 +26,7 @@ gamepad.
 | `tests/` | Host-side unit tests for the hardware-independent core (CRSF parser, mapping, failsafe, LED sequencer) |
 | `tools/` | Docker build environment and helper scripts |
 | `web/` | Single-file Web Serial configuration page |
-| `docs/` | Hardware BOM, pin plan, LED behaviour, firmware and web UI notes |
+| `docs/` | Hardware BOM, pin plan, LED behaviour, firmware, web UI, Windows notes, bring-up checklist |
 
 ## Building
 
