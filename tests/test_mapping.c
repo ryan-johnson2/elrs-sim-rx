@@ -51,6 +51,18 @@ static void test_config_rejects_out_of_range(void)
     c.throttle_axis = 0xFF;
     config_finalize(&c);
     CHECK(config_is_valid(&c));
+
+    // failsafe_ms must be sane: 0 would keep the device in failsafe forever.
+    config_defaults(&c);
+    c.failsafe_ms = 0;
+    config_finalize(&c);
+    CHECK(!config_is_valid(&c));
+    c.failsafe_ms = 251;
+    config_finalize(&c);
+    CHECK(!config_is_valid(&c));
+    c.failsafe_ms = 20;
+    config_finalize(&c);
+    CHECK(config_is_valid(&c));
 }
 
 static void test_axis_scaling(void)

@@ -31,7 +31,6 @@ static bool     stream;             // periodic JSON channel stream
 static uint32_t stream_last_ms;
 static uint32_t stream_interval_ms = 50;
 
-static bool     passthrough;
 static uint32_t passthrough_last_host_ms;
 static uint32_t passthrough_baud;
 
@@ -40,15 +39,26 @@ static volatile bool pending_bootsel;
 // ---------------------------------------------------------------------------
 // Output helpers
 // ---------------------------------------------------------------------------
+// Bounded: if the host is not draining the port, drop output after a few ms
+// rather than stall the main loop (HID, failsafe, LED all run from it).
+#define OUT_WRITE_TIMEOUT_MS 5
+static uint32_t out_dropped_bytes;
+
 static void out_write(const char *s, size_t n)
 {
+    if (!tud_cdc_connected()) { out_dropped_bytes += n; return; }
+    absolute_time_t deadline = make_timeout_time_ms(OUT_WRITE_TIMEOUT_MS);
     while (n > 0) {
         uint32_t w = tud_cdc_write(s, (uint32_t)n);
         s += w;
         n -= w;
         if (n > 0) {
-            tud_task();
             tud_cdc_write_flush();
+            tud_task();
+            if (time_reached(deadline) || !tud_cdc_connected()) {
+                out_dropped_bytes += n;
+                return;
+            }
         }
     }
 }
@@ -58,15 +68,17 @@ static void out_str(const char *s)
     out_write(s, strlen(s));
 }
 
+static uint32_t out_truncated;   // debug counter: a single out_printf exceeded its buffer
+
 static void out_printf(const char *fmt, ...)
 {
-    char buf[256];
+    char buf[512];
     va_list ap;
     va_start(ap, fmt);
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     if (n < 0) return;
-    if ((size_t)n >= sizeof(buf)) n = sizeof(buf) - 1;
+    if ((size_t)n >= sizeof(buf)) { n = sizeof(buf) - 1; out_truncated++; }
     out_write(buf, (size_t)n);
 }
 
@@ -82,7 +94,6 @@ static void out_prompt(void)
 // ---------------------------------------------------------------------------
 static void passthrough_enter(uint32_t baud, uint32_t now_ms)
 {
-    passthrough = true;
     passthrough_baud = baud;
     passthrough_last_host_ms = now_ms;
     if (!rx_power_is_on()) {
@@ -94,7 +105,6 @@ static void passthrough_enter(uint32_t baud, uint32_t now_ms)
 
 static void passthrough_exit(void)
 {
-    passthrough = false;
     app.passthrough = false;
     bf_mode = false;
     rx_uart_set_baud(CRSF_BAUD);
@@ -105,6 +115,12 @@ static void passthrough_exit(void)
 static void passthrough_task(uint32_t now_ms)
 {
     uint8_t buf[256];
+
+    if (!tud_cdc_connected() ||
+        (uint32_t)(now_ms - passthrough_last_host_ms) > PASSTHROUGH_IDLE_MS) {
+        passthrough_exit();
+        return;
+    }
 
     // host -> RX
     if (tud_cdc_available()) {
@@ -120,11 +136,6 @@ static void passthrough_task(uint32_t now_ms)
     if (n > 0) {
         out_write((const char *)buf, n);
         tud_cdc_write_flush();
-    }
-
-    if (!tud_cdc_connected() ||
-        (uint32_t)(now_ms - passthrough_last_host_ms) > PASSTHROUGH_IDLE_MS) {
-        passthrough_exit();
     }
 }
 
@@ -158,23 +169,25 @@ static const char *led_state_name(led_state_t s)
 
 static void emit_status_json(uint32_t now_ms)
 {
+    // Emitted in pieces: the whole line is ~400 bytes, larger than one printf buffer.
     out_printf("{\"product\":\"%s\",\"version\":\"%s\",\"uptime_ms\":%lu,"
-               "\"rx_power\":%s,\"link\":%s,\"failsafe\":%s,\"led\":\"%s\","
-               "\"lq\":%u,\"rssi\":-%u,\"snr\":%d,\"rfmode\":%u,"
-               "\"frames_ok\":%lu,\"frames_crc_err\":%lu,\"frames_timeout\":%lu,"
-               "\"uart_overruns\":%lu,\"reports_sent\":%lu,\"reports_dropped\":%lu,"
-               "\"last_rc_age_ms\":%ld,\"config_dirty\":%s}\r\n",
+               "\"rx_power\":%s,\"link\":%s,\"failsafe\":%s,\"led\":\"%s\",",
                PRODUCT_NAME, FW_VERSION, (unsigned long)(now_ms - app.boot_ms),
                rx_power_is_on() ? "true" : "false",
                failsafe_is_active(&app.failsafe) ? "false" : "true",
                failsafe_is_active(&app.failsafe) ? "true" : "false",
-               led_state_name(app.led_state),
+               led_state_name(app.led_state));
+    out_printf("\"lq\":%u,\"rssi\":-%u,\"snr\":%d,\"rfmode\":%u,\"last_rc_age_ms\":%ld,",
                app.crsf.link.uplink_lq, app.crsf.link.uplink_rssi1,
                app.crsf.link.uplink_snr, app.crsf.link.rf_mode,
+               app.crsf.have_rc ? (long)(now_ms - app.crsf.last_rc_ms) : -1L);
+    out_printf("\"frames_ok\":%lu,\"frames_crc_err\":%lu,\"frames_timeout\":%lu,\"uart_overruns\":%lu,",
                (unsigned long)app.crsf.frames_ok, (unsigned long)app.crsf.frames_crc_err,
-               (unsigned long)app.crsf.frames_timeout, (unsigned long)rx_uart_rx_overruns(),
+               (unsigned long)app.crsf.frames_timeout, (unsigned long)rx_uart_rx_overruns());
+    out_printf("\"reports_sent\":%lu,\"reports_dropped\":%lu,\"console_dropped\":%lu,\"console_truncated\":%lu,"
+               "\"config_dirty\":%s}\r\n",
                (unsigned long)app.reports_sent, (unsigned long)app.reports_dropped,
-               app.crsf.have_rc ? (long)(now_ms - app.crsf.last_rc_ms) : -1L,
+               (unsigned long)out_dropped_bytes, (unsigned long)out_truncated,
                app.config_dirty ? "true" : "false");
 }
 
@@ -392,7 +405,7 @@ static void handle_command(char *cmdline, uint32_t now_ms)
             else if (!strcmp(argv[1], "off")) on = false;
             else if (!strcmp(argv[1], "toggle")) on = !on;
             else { emit_err("usage: rxpower on|off|toggle"); goto done; }
-            rx_power_set(on, now_ms);
+            app_set_rx_power(on, now_ms);
             out_printf("{\"ok\":true,\"rx_power\":%s}\r\n", on ? "true" : "false");
         }
     } else if (!strcmp(cmd, "rxboot")) {
@@ -447,7 +460,6 @@ void cli_init(void)
     line_len = 0;
     bf_mode = false;
     stream = false;
-    passthrough = false;
     pending_bootsel = false;
 }
 
@@ -459,7 +471,7 @@ void cli_on_line_coding(uint32_t bit_rate)
         return;
     }
     // While bridging, follow the host's baud so esptool can change speed.
-    if (passthrough && bit_rate >= 9600 && bit_rate <= 2000000) {
+    if (app.passthrough && bit_rate >= 9600 && bit_rate <= 2000000) {
         passthrough_baud = bit_rate;
         rx_uart_set_baud(bit_rate);
     }
@@ -471,7 +483,7 @@ void cli_task(uint32_t now_ms)
         app_reboot_to_bootsel();
     }
 
-    if (passthrough) {
+    if (app.passthrough) {
         passthrough_task(now_ms);
         return;
     }

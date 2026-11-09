@@ -19,6 +19,9 @@
 #define CONFIG_MAGIC    0x58525345u   // "ESRX"
 #define CONFIG_VERSION  1
 
+#define FAILSAFE_MS_MIN 20
+#define FAILSAFE_MS_MAX 250
+
 typedef enum {
     BTN_NONE = 0,
     BTN_LOW  = 1,   // pressed when channel < BTN_LOW_MAX_US

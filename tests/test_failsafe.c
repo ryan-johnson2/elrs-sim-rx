@@ -85,12 +85,38 @@ static void test_lq_zero_after_last_rc_triggers(void)
     CHECK(failsafe_is_active(&f));
 }
 
-static void test_lq_zero_older_than_rc_is_ignored(void)
+static void test_lq_zero_same_batch_triggers(void)
 {
+    // RC frame and LQ-0 link stats stamped with the same millisecond (same
+    // UART drain): the RX says the link is lost, so failsafe.
     failsafe_t f;
     failsafe_init(&f, 100, 20);
-    // Stale LQ 0 from before the RC frame should not matter.
+    failsafe_input_t in = in_at(1000, true, true, 1000, 100, true, 900);
+    failsafe_update(&f, &in);
+    CHECK(!failsafe_is_active(&f));
+    in = in_at(1004, true, true, 1004, 0, true, 1004);
+    CHECK(failsafe_update(&f, &in));
+    CHECK(failsafe_is_active(&f));
+}
+
+static void test_lq_zero_recent_but_older_than_rc_triggers(void)
+{
+    // "Set Position" failsafe mode: RC frames keep coming while link stats
+    // (every 100 ms) report LQ 0. 100 ms old is within one interval: failsafe.
+    failsafe_t f;
+    failsafe_init(&f, 100, 20);
     failsafe_input_t in = in_at(1000, true, true, 1000, 0, true, 900);
+    CHECK(failsafe_update(&f, &in));
+    CHECK(failsafe_is_active(&f));
+}
+
+static void test_lq_zero_stale_is_ignored(void)
+{
+    // LQ 0 reported long before the newest RC frame: link has come back and
+    // fresh link stats just have not arrived yet.
+    failsafe_t f;
+    failsafe_init(&f, 100, 20);
+    failsafe_input_t in = in_at(1000, true, true, 1000, 0, true, 1000 - FAILSAFE_LQ_STALE_MS);
     CHECK(!failsafe_update(&f, &in));
     CHECK(!failsafe_is_active(&f));
 }
@@ -130,7 +156,9 @@ int main(void)
     RUN(test_retries_until_delivered);
     RUN(test_link_clears_and_loss_reengages);
     RUN(test_lq_zero_after_last_rc_triggers);
-    RUN(test_lq_zero_older_than_rc_is_ignored);
+    RUN(test_lq_zero_same_batch_triggers);
+    RUN(test_lq_zero_recent_but_older_than_rc_triggers);
+    RUN(test_lq_zero_stale_is_ignored);
     RUN(test_rx_unpowered_is_failsafe);
     RUN(test_millis_wraparound);
     TEST_MAIN_END();

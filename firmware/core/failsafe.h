@@ -9,6 +9,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// ExpressLRS RX sends link statistics every 100 ms. An LQ-0 report older than
+// this relative to the newest RC frame is stale (link came back since).
+#define FAILSAFE_LQ_STALE_MS 150
+
 typedef struct {
     uint32_t timeout_ms;
     uint32_t retry_ms;

@@ -9,6 +9,7 @@
 #define RING_SIZE 1024   // power of two
 
 static uint8_t ring[RING_SIZE];
+static uint32_t ring_ts[RING_SIZE];   // arrival time per byte, ms since boot
 static volatile uint16_t ring_head;
 static volatile uint16_t ring_tail;
 static volatile size_t overruns;
@@ -17,15 +18,22 @@ static uint32_t current_baud;
 
 static void on_uart_rx(void)
 {
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    uart_hw_t *hw = uart_get_hw(CRSF_UART);
+    if (hw->rsr & UART_UARTRSR_OE_BITS) {   // hardware FIFO overrun
+        overruns++;
+        hw->rsr = 0;                        // write clears
+    }
     while (uart_is_readable(CRSF_UART)) {
         uint8_t b = uart_getc(CRSF_UART);
         uint16_t next = (uint16_t)((ring_head + 1) & (RING_SIZE - 1));
         if (next != ring_tail) {
             ring[ring_head] = b;
+            ring_ts[ring_head] = now;
             __dmb();
             ring_head = next;
         } else {
-            overruns++;
+            overruns++;                     // software ring overrun
         }
     }
 }
@@ -56,8 +64,7 @@ void rx_uart_enable(uint32_t baud)
         return;
     }
     ring_head = ring_tail = 0;
-    uart_init(CRSF_UART, baud);
-    current_baud = uart_set_baudrate(CRSF_UART, baud);
+    current_baud = uart_init(CRSF_UART, baud);
     uart_set_format(CRSF_UART, 8, 1, UART_PARITY_NONE);
     uart_set_fifo_enabled(CRSF_UART, true);
     gpio_set_function(PIN_CRSF_TX, GPIO_FUNC_UART);
@@ -97,15 +104,27 @@ uint32_t rx_uart_get_baud(void)
     return current_baud;
 }
 
-size_t rx_uart_read(uint8_t *buf, size_t max)
+size_t rx_uart_read_ts(uint8_t *buf, uint32_t *ts_ms, size_t max)
 {
     size_t n = 0;
     while (n < max && ring_tail != ring_head) {
         __dmb();
-        buf[n++] = ring[ring_tail];
+        buf[n] = ring[ring_tail];
+        if (ts_ms) ts_ms[n] = ring_ts[ring_tail];
+        n++;
         ring_tail = (uint16_t)((ring_tail + 1) & (RING_SIZE - 1));
     }
     return n;
+}
+
+size_t rx_uart_read(uint8_t *buf, size_t max)
+{
+    return rx_uart_read_ts(buf, NULL, max);
+}
+
+void rx_uart_discard(void)
+{
+    ring_tail = ring_head;
 }
 
 void rx_uart_write(const uint8_t *buf, size_t len)

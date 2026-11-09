@@ -15,10 +15,11 @@ static bool link_ok(const failsafe_t *f, const failsafe_input_t *in)
     if (!in->rx_powered) return false;
     if (!in->have_rc) return false;
     if ((uint32_t)(in->now_ms - in->last_rc_ms) >= f->timeout_ms) return false;
-    // A link-stats frame newer than the last RC frame saying LQ 0 means the
-    // RX has already declared the link lost.
+    // LQ 0 from the RX means it has declared the link lost, even if it keeps
+    // emitting RC frames (ELRS "Set Position" failsafe mode). Only ignore the
+    // report once RC frames are clearly newer than it.
     if (in->have_link && in->lq == 0 &&
-        (int32_t)(in->last_link_ms - in->last_rc_ms) > 0) {
+        (int32_t)(in->last_rc_ms - in->last_link_ms) < FAILSAFE_LQ_STALE_MS) {
         return false;
     }
     return true;

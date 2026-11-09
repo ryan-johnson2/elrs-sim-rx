@@ -46,6 +46,7 @@ extern app_t app;
 uint32_t app_now_ms(void);
 
 // Actions callable from the console
+void app_set_rx_power(bool on, uint32_t now_ms); // also cancels any pending bind when turning off
 void app_request_bind(uint32_t now_ms);          // "bd" command path
 void app_request_bind_cycle(uint32_t now_ms);    // power-cycle path
 void app_send_rx_command(char c0, char c1);

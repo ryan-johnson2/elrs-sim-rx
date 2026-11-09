@@ -57,6 +57,7 @@ bool config_is_valid(const config_t *cfg)
         if (cfg->button_level[i] > BTN_HIGH) return false;
     }
     if (cfg->throttle_axis != 0xFF && cfg->throttle_axis >= NUM_AXES) return false;
+    if (cfg->failsafe_ms < FAILSAFE_MS_MIN || cfg->failsafe_ms > FAILSAFE_MS_MAX) return false;
     return true;
 }
 

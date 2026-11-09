@@ -36,6 +36,15 @@ void app_send_rx_command(char c0, char c1)
     rx_uart_write(frame, n);
 }
 
+void app_set_rx_power(bool on, uint32_t now_ms)
+{
+    if (!on) {
+        app.bind_pending = false;        // a stale bind must not fire on the next power-on
+        app.bind_requested_ms = 0;
+    }
+    rx_power_set(on, now_ms);
+}
+
 void app_request_bind(uint32_t now_ms)
 {
     app.bind_requested_ms = now_ms;
@@ -62,9 +71,20 @@ void app_request_bind_cycle(uint32_t now_ms)
 void app_save_config(void)
 {
     config_finalize(&app.config);
+    uint32_t t0 = app_now_ms();
     if (config_store_save(&app.config)) {
         app.config_dirty = false;
     }
+    // The erase/program cycle runs with interrupts off for tens of ms, so RC
+    // bytes were lost and the parser may hold a partial frame. Drop the
+    // leftovers and credit the stall to the link timestamps so the failsafe
+    // does not fire because of our own flash write.
+    uint32_t stall = app_now_ms() - t0;
+    rx_uart_discard();
+    app.crsf.pos = 0;
+    if (app.crsf.have_rc)   app.crsf.last_rc_ms    += stall;
+    if (app.crsf.have_link) app.crsf.last_link_ms  += stall;
+    app.crsf.last_frame_ms += stall;
 }
 
 void app_reboot_to_bootsel(void)
@@ -167,8 +187,7 @@ static void update_button(uint32_t now_ms)
     bool pressed = !gpio_get(PIN_BUTTON);   // active low
     switch (button_update(&app.button, pressed, now_ms)) {
     case BUTTON_EVENT_SHORT:
-        rx_power_set(!rx_power_is_on(), now_ms);
-        app.bind_requested_ms = 0;
+        app_set_rx_power(!rx_power_is_on(), now_ms);
         break;
     case BUTTON_EVENT_LONG:
         app_request_bind(now_ms);
@@ -215,6 +234,7 @@ int main(void)
     cli_init();
 
     uint8_t buf[128];
+    uint32_t ts[128];
     hid_report_t report;
 
     while (true) {
@@ -224,20 +244,27 @@ int main(void)
         rx_power_task(now);
 
         // Deferred bind command once the RX has had time to boot.
-        if (app.bind_pending && rx_power_is_on() && !rx_power_bind_cycle_active() &&
+        if (app.bind_pending && app.bind_requested_ms != 0 && rx_power_is_on() && !rx_power_bind_cycle_active() &&
             (uint32_t)(now - rx_power_on_since_ms()) >= BIND_AFTER_POWER_MS) {
             app_send_rx_command('b', 'd');
             app.bind_pending = false;
         }
 
         // CRSF in -> HID out. In passthrough the console owns the UART.
+        // Bytes carry their IRQ arrival time so inter-byte timeouts reflect
+        // the wire, not main-loop stalls. One report per drain, with the
+        // freshest channels, since the HID endpoint takes one per 1 ms poll.
         if (!app.passthrough) {
-            size_t n = rx_uart_read(buf, sizeof(buf));
+            size_t n = rx_uart_read_ts(buf, ts, sizeof(buf));
+            bool rc_updated = false;
             for (size_t i = 0; i < n; i++) {
-                if (crsf_feed(&app.crsf, buf[i], now) == CRSF_TYPE_RC_CHANNELS) {
-                    mapping_build_report(&app.config, app.crsf.channels, &report);
-                    send_report(&report);
+                if (crsf_feed(&app.crsf, buf[i], ts[i]) == CRSF_TYPE_RC_CHANNELS) {
+                    rc_updated = true;
                 }
+            }
+            if (rc_updated) {
+                mapping_build_report(&app.config, app.crsf.channels, &report);
+                send_report(&report);
             }
         }
 

@@ -36,9 +36,23 @@ update_led()                          pick pattern, drive PIN_LED
 cli_task()                            console or passthrough bridge
 ```
 
-HID reports go out on every RC frame (250 to 500 Hz depending on the ELRS packet rate),
-never on a timer. The HID endpoint polls at 1 ms. If the endpoint is busy the frame is
-dropped and counted in `reports_dropped`; the next frame carries the fresh state anyway.
+HID reports go out once per main-loop pass in which at least one RC frame was decoded,
+carrying the freshest channels, never on a timer. At the ELRS packet rate (250 to 500 Hz)
+that is one report per frame. The HID endpoint polls at 1 ms; if it is busy the report is
+dropped and counted in `reports_dropped`, and the next pass carries the current state.
+
+UART bytes are timestamped in the receive interrupt, and the CRSF parser's inter-byte
+timeout uses those arrival times, so a slow main-loop pass cannot be mistaken for a gap on
+the wire.
+
+Console output is bounded: if the host stops draining the serial port, output is dropped
+after 5 ms rather than stalling the loop. `status` reports `console_dropped` and
+`console_truncated` so that shows up in the dev panel.
+
+Saving the config erases and programs a flash sector with interrupts off for tens of
+milliseconds. RC bytes received during that window are lost; afterwards the firmware drops
+any partial frame, discards the UART backlog, and credits the stall to the link timestamps
+so the failsafe does not trigger because of our own flash write.
 
 ## HID report
 
@@ -69,8 +83,11 @@ run the radio in "Full Res 16ch" mode or set buttons 30 to 35 to channel 0 in th
 
 ## Failsafe
 
-Engages when any of: RX unpowered, no RC frame for `failsafe_ms` (default 100), or a
-link-stats frame newer than the last RC frame reports LQ 0. Sends all axes centred,
+Engages when any of: RX unpowered, no RC frame for `failsafe_ms` (default 100), or the
+receiver reports LQ 0 in a link-stats frame that is not stale. Link stats arrive every
+100 ms; an LQ-0 report counts until an RC frame is more than 150 ms newer than it. This
+covers the ELRS "Set Position" failsafe mode, where the receiver keeps emitting RC frames
+after the link is gone. Sends all axes centred,
 throttle axis at minimum, no buttons, and retries every 20 ms until TinyUSB accepts the
 report. Re-arms on the next good RC frame.
 
