@@ -83,6 +83,14 @@ await page.click('#btn-defaults');
 await page.waitForTimeout(600);
 check('defaults restored axis 0 to ch1', (await page.inputValue('#ax-ch-0')) === '1');
 
+// Developer toggle: console hidden by default, shown after toggle
+check('console hidden by default', !(await page.locator('#console').isVisible()));
+check('firmware panel visible by default', await page.locator('#sec-firmware').isVisible());
+await page.click('#btn-dev');
+await page.waitForTimeout(200);
+check('console visible in dev mode', await page.locator('#console').isVisible());
+check('counters visible in dev mode', await page.locator('#st-frames').isVisible());
+
 // Raw console command
 await page.fill('#in-cmd', 'version');
 await page.press('#in-cmd', 'Enter');
@@ -94,6 +102,30 @@ await page.fill('#in-cmd', 'bogus');
 await page.press('#in-cmd', 'Enter');
 await page.waitForTimeout(300);
 check('console shows error for unknown command', (await page.textContent('#console')).includes('error: unknown command'));
+
+// Firmware update flow against the in-page mock BOOTSEL device
+const uf2 = process.env.UF2_PATH || '/work/firmware/build/elrs_sim_rx.uf2';
+await page.setInputFiles('#fw-file', uf2);
+await page.waitForTimeout(400);
+check('uf2 accepted', (await page.textContent('#fw-info')).includes('blocks'), await page.textContent('#fw-info'));
+check('download enabled after pick', !(await page.locator('#btn-fw-download').isDisabled()));
+await page.click('#btn-fw-step1');
+await page.waitForTimeout(600);
+check('step 1 disconnected the device', await page.locator('#btn-connect').isVisible());
+check('step 2 enabled', !(await page.locator('#btn-fw-step2').isDisabled()));
+await page.click('#btn-fw-step2');
+await page.waitForFunction(() => document.getElementById('fw-status').textContent.startsWith('Flashed'), null, { timeout: 15000 }).catch(() => {});
+const fwStatus = await page.textContent('#fw-status');
+check('mock flash completed', fwStatus.startsWith('Flashed'), fwStatus);
+check('progress bar full', (await page.getAttribute('#fw-bar', 'style') || '').includes('100%'));
+const fwLogText = await page.textContent('#fw-log');
+check('flash log shows erase and reboot', fwLogText.includes('erase 0x10000000') && fwLogText.includes('rebooting'));
+await page.screenshot({ path: `${OUT}/06-firmware-flashed-dev.png`, fullPage: true });
+
+// Reconnect mock for the remaining checks
+await page.click('#link-mock');
+await page.waitForTimeout(1200);
+check('reconnected after flash', await page.locator('#btn-disconnect').isVisible());
 
 // Dark mode
 await page.emulateMedia({ colorScheme: 'dark' });

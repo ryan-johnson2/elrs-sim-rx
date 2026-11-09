@@ -40,6 +40,37 @@ go straight to the channel display.
 On connect the page does: `stream off`, `map`, `status`, `stream on 50`, then polls
 `status` once a second.
 
+## Developer mode
+
+The header's **Dev** toggle (also `?dev` in the URL, remembered in localStorage) reveals
+the panels a normal user does not need: the raw console, frame and HID counters, the
+channel-stream toggle and the flash log. Everything else is the same page, so there is one
+codebase and one deployment. The dev server (`tools/serve.sh`) is what makes the local
+build available to the Firmware panel; the hosted copy on GitHub Pages gets its firmware
+list from a manifest published alongside the page (to be wired up with releases).
+
+## Firmware panel
+
+Flashing runs in the browser over WebUSB using the RP2040 bootloader's PICOBOOT
+interface (`web/picoboot.js`, protocol from pico-sdk `boot/picoboot.h` and picotool).
+
+1. Pick a firmware: the dropdown lists `firmware/manifest.json` entries served next to
+   the page (written by `tools/build.sh`), or Browse for a local `.uf2`. Hosted files are
+   SHA-256 checked against the manifest; every file is parsed as a UF2 before flashing.
+2. **Enter update mode** sends `dfu` over the open serial connection and disconnects.
+   The board re-enumerates as "RP2 Boot". With no serial connection, hold BOOT while
+   plugging in instead.
+3. **Select device and flash** opens the browser's USB picker, then: exclusive access,
+   exit XIP, one erase per contiguous sector run, 4 KB writes, reboot. Progress and a log
+   are shown; the log is in the dev panel.
+
+**Download UF2** gives the file for the manual route: copy it onto the `RPI-RP2` drive.
+Windows needs WinUSB bound to "RP2 Boot (Interface 1)" once for the WebUSB route; see
+`docs/WINDOWS.md`. The manual route needs no driver.
+
+`tests/web/test_picoboot.mjs` flashes the real build UF2 into a simulated BOOTSEL device
+and checks the resulting image byte for byte, plus the command order and error paths.
+
 ## Mock mode
 
 `web/index.html?mock` (or the footer link) connects to an in-page simulated device with
@@ -54,7 +85,13 @@ firmware answers the flasher's Betaflight CLI queries and bridges the UART.
 
 ## Testing
 
-`tools/test-web.sh` runs `tests/web/test_webui.mjs` in the official Playwright Docker
-image: loads the page in mock mode, exercises connect, mapping edits, power toggle,
-save, defaults, console and disconnect, checks for console errors and overflow in a
-half-screen window, and writes screenshots to `tests/web/shots/`. No browser is needed on the host.
+`tools/test-web.sh` runs both web tests in the official Playwright Docker image, so no
+browser or Node is needed on the host:
+
+- `tests/web/test_picoboot.mjs` (Node): UF2 parsing, flash planning and the PICOBOOT
+  command sequence against a simulated bootloader, using the real build output.
+- `tests/web/test_webui.mjs` (Chromium): loads the page in mock mode and exercises
+  connect, mapping edits, power toggle, save, defaults, the dev toggle, the console, the
+  full firmware update flow against the in-page mock bootloader, and disconnect. Checks
+  for browser console errors and layout overflow, and writes screenshots to
+  `tests/web/shots/`.

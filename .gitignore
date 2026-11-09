@@ -10,3 +10,4 @@ __pycache__/
 node_modules/
 tests/web/shots/
 tests/web/.cache/
+tools/.certs/

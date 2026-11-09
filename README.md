@@ -36,22 +36,34 @@ Nothing needs to be installed on the host except Docker.
 ```
 tools/build.sh        # firmware -> firmware/build/elrs_sim_rx.uf2
 tools/test.sh         # host unit tests
-tools/test-web.sh     # browser test of the web UI against the mock device (Playwright image)
-tools/flash.sh        # flash a connected board
+tools/test-web.sh     # web UI + PICOBOOT tests (Playwright image)
+tools/serve.sh        # dev server: page + latest firmware over HTTP/HTTPS on the LAN
+tools/flash.sh        # flash a board connected to this machine
 tools/shell.sh        # shell inside the container
 ```
 
-Flash with `tools/flash.sh`. It reboots a running board into the bootloader over its
-serial port, or you hold BOOT on the RP2040-Zero while plugging it in. The UF2 is copied
-to the `RPI-RP2` drive, or loaded with picotool from the container if nothing auto-mounted.
-For non-root USB access, install `tools/99-elrs-sim-rx.rules` into `/etc/udev/rules.d/`.
+### Flashing
+
+Three ways, pick whichever fits the machine the board is plugged into:
+
+- **From the web page.** `tools/serve.sh` serves the page and the latest build over HTTPS
+  on the LAN. Open it in Chrome or Edge on the machine with the board, pick the firmware
+  in the Firmware panel, click "Enter update mode" then "Select device and flash". Works
+  from a headless build VM to a desktop. Windows needs a one-time WinUSB driver step for
+  the bootloader, see `docs/WINDOWS.md`.
+- **Drag and drop.** Download the UF2 (web page or `firmware/build/`), hold BOOT while
+  plugging in, copy the file to the `RPI-RP2` drive. No drivers anywhere.
+- **From this machine.** `tools/flash.sh` reboots a running board into the bootloader over
+  its serial port and copies the UF2 or uses picotool from the container. For non-root USB
+  access install `tools/99-elrs-sim-rx.rules` into `/etc/udev/rules.d/`.
 
 ## Configuring
 
 Open `web/index.html` in Chrome or Edge (Web Serial), click Connect, and pick the device.
-It shows live channels, link stats, receiver power and bind controls, and the full
-channel-to-axis and channel-to-button mapping. Changes apply instantly; "Save to device"
-writes them to flash. `web/index.html?mock` runs against a simulated device.
+It shows live channels, link stats, receiver power and bind controls, the full
+channel-to-axis and channel-to-button mapping, and a Firmware panel for updates. Changes
+apply instantly; "Save to device" writes them to flash. The **Dev** toggle in the header
+reveals the raw console, counters and flash log. `?mock` runs against a simulated device.
 
 The same port also answers a plain terminal at any baud rate: type `help`.
 

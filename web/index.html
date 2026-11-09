@@ -65,6 +65,13 @@
   .dirty { color: var(--warn); font-size: 13px; }
   .banner { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--warn); color: var(--warn); font-size: 14px; }
   .hidden { display: none !important; }
+  body:not(.dev) .dev { display: none !important; }
+  .progress { height: 10px; background: var(--bar-bg); border-radius: 5px; overflow: hidden; margin: 8px 0; }
+  .progress i { display: block; height: 100%; width: 0; background: var(--bar); transition: width .15s linear; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details ol { font-size: 13px; color: var(--muted); margin: 6px 0 0; padding-left: 20px; }
+  .toggle { font-size: 12px; padding: 4px 9px; }
+  .toggle.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
   footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; color: var(--muted); font-size: 13px; }
   a { color: var(--accent); }
 </style>
@@ -74,6 +81,7 @@
   <h1>ELRS Sim RX</h1>
   <span id="pill-link" class="pill"><span class="dot"></span><span>no device</span></span>
   <span id="pill-rx" class="pill"><span class="dot"></span><span>RX ?</span></span>
+  <button id="btn-dev" class="toggle" title="Show developer panels: console, counters, flash log">Dev</button>
   <button id="btn-connect" class="primary">Connect</button>
   <button id="btn-disconnect" class="hidden">Disconnect</button>
 </header>
@@ -92,8 +100,8 @@
       <dt>Packet mode</dt><dd id="st-rfmode">–</dd>
       <dt>LED</dt><dd id="st-led">–</dd>
       <dt>Failsafe</dt><dd id="st-fs">–</dd>
-      <dt>Frames ok / crc / timeout</dt><dd id="st-frames">–</dd>
-      <dt>HID sent / dropped</dt><dd id="st-hid">–</dd>
+      <dt class="dev">Frames ok / crc / timeout</dt><dd class="dev" id="st-frames">–</dd>
+      <dt class="dev">HID sent / dropped</dt><dd class="dev" id="st-hid">–</dd>
     </dl>
   </section>
 
@@ -158,7 +166,33 @@
     <div class="muted">Mapping changes apply instantly on the device but are lost at reboot until saved.</div>
   </section>
 
-  <section class="wide">
+  <section class="wide" id="sec-firmware">
+    <h2>Firmware <span class="spacer"></span><span id="fw-current" class="muted"></span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <select id="fw-select"><option value="file">Choose a .uf2 file…</option></select>
+      <input type="file" id="fw-file" accept=".uf2" class="hidden">
+      <button id="btn-fw-pick">Browse…</button>
+      <button id="btn-fw-download">Download UF2</button>
+      <span class="spacer"></span>
+      <button id="btn-fw-step1">1. Enter update mode</button>
+      <button id="btn-fw-step2" class="primary" disabled>2. Select device and flash</button>
+    </div>
+    <div id="fw-info" class="muted"></div>
+    <div class="progress"><i id="fw-bar"></i></div>
+    <div id="fw-status" class="muted">Pick a firmware, then step 1 puts a connected device into update mode. Step 2 opens the browser's USB picker: choose "RP2 Boot".</div>
+    <div id="fw-log" class="console dev" style="height:120px; margin-top:8px"></div>
+    <details style="margin-top:8px">
+      <summary>Manual method, no WebUSB needed</summary>
+      <ol>
+        <li>Download the UF2 above.</li>
+        <li>Hold BOOT on the board while plugging it in (or use step 1 above). A drive named <b>RPI-RP2</b> appears.</li>
+        <li>Copy the UF2 onto that drive. The board reboots into the new firmware.</li>
+      </ol>
+      <p class="muted">Windows: the WebUSB route needs the WinUSB driver bound to "RP2 Boot (Interface 1)" with Zadig, once. See docs/WINDOWS.md. The manual method needs no driver.</p>
+    </details>
+  </section>
+
+  <section class="wide dev">
     <h2>Console <span class="spacer"></span>
       <label class="muted" style="font-weight:400"><input type="checkbox" id="cb-show-stream"> show channel stream</label>
       <button id="btn-clear">Clear</button>
@@ -175,6 +209,7 @@
   Web Serial, Chromium browsers only. Nothing leaves your machine. <a href="#" id="link-mock">Try with a simulated device</a>.
 </footer>
 
+<script src="picoboot.js"></script>
 <script>
 'use strict';
 
@@ -432,6 +467,7 @@ function renderChannels(obj) {
 
 function renderStatus(s) {
   $('st-version').textContent = `${s.product} ${s.version}`;
+  $('fw-current').textContent = `device: v${s.version}`;
   $('st-link').textContent = s.link ? `connected (last frame ${s.last_rc_age_ms} ms ago)` : 'no link';
   $('st-lq').textContent = `${s.lq} % / ${s.rssi} dBm / ${s.snr} dB`;
   $('st-rfmode').textContent = RF_MODES[s.rfmode] ?? s.rfmode;
@@ -463,6 +499,7 @@ function setConnectedUi(on) {
   $('btn-disconnect').classList.toggle('hidden', !on);
   for (const b of document.querySelectorAll('main button, main select, main input')) {
     if (b.id === 'cb-show-stream' || b.id === 'btn-clear') continue;
+    if (b.closest('#sec-firmware')) continue;
     b.disabled = !on;
   }
   if (!on) { setPill('pill-link', '', 'no device'); setPill('pill-rx', '', 'RX ?'); $('ch-rate').textContent = ''; }
@@ -506,6 +543,161 @@ $('btn-dfu').onclick = () => { if (confirm('Reboot into firmware update mode? Th
 $('btn-buttons-toggle').onclick = () => { showAllButtons = !showAllButtons; renderMap(); };
 $('btn-clear').onclick = () => { $('console').innerHTML = ''; };
 $('form-cmd').onsubmit = (e) => { e.preventDefault(); const v = $('in-cmd').value.trim(); if (v) { cmd(v); $('in-cmd').value = ''; } };
+
+// ---------------------------------------------------------------------------
+// Developer mode
+// ---------------------------------------------------------------------------
+function setDev(on, persist = true) {
+  document.body.classList.toggle('dev', on);
+  $('btn-dev').classList.toggle('on', on);
+  if (persist) { try { localStorage.setItem('elrs-sim-rx-dev', on ? '1' : '0'); } catch {} }
+}
+$('btn-dev').onclick = () => setDev(!document.body.classList.contains('dev'));
+(() => {
+  let on = location.search.includes('dev');
+  if (!on) { try { on = localStorage.getItem('elrs-sim-rx-dev') === '1'; } catch {} }
+  setDev(on, false);
+})();
+
+// ---------------------------------------------------------------------------
+// Firmware update (PICOBOOT over WebUSB, see picoboot.js)
+// ---------------------------------------------------------------------------
+const PB = window.PicoBootLib;
+let fwManifest = null;
+let fwBytes = null;        // Uint8Array of the chosen UF2
+let fwLabel = '';
+let fwStep1Done = false;
+let fwMock = false;        // set when the serial device was the mock
+
+function fwLog(line) {
+  const el = $('fw-log'); const d = document.createElement('div'); d.textContent = line; el.appendChild(d); el.scrollTop = el.scrollHeight;
+  log('[flash] ' + line);
+}
+function fwStatus(text, cls = 'muted') { const el = $('fw-status'); el.textContent = text; el.className = cls; }
+function fwProgress(frac) { $('fw-bar').style.width = `${Math.round(frac * 100)}%`; }
+
+async function loadManifest() {
+  if (location.protocol === 'file:') { $('fw-info').textContent = 'Opened as a local file: choose a .uf2 with Browse.'; return; }
+  try {
+    const r = await fetch('firmware/manifest.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    fwManifest = await r.json();
+    const sel = $('fw-select');
+    for (const f of fwManifest.files) {
+      const o = document.createElement('option');
+      o.value = f.path; o.textContent = `${f.name}  v${f.version}  ${f.commit}  ${f.built.replace('T', ' ').replace('Z', ' UTC')}`;
+      sel.insertBefore(o, sel.firstChild);
+    }
+    sel.value = fwManifest.files[0].path;
+    await selectFirmware();
+  } catch (e) {
+    // No manifest: only the file picker is available (GitHub Pages without a release, or file://).
+    $('fw-info').textContent = 'No hosted firmware found. Choose a .uf2 file.';
+  }
+}
+
+async function sha256hex(bytes) {
+  if (!crypto?.subtle) return null;
+  const h = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function selectFirmware() {
+  const sel = $('fw-select');
+  fwBytes = null; fwProgress(0);
+  if (sel.value === 'file') { $('fw-info').textContent = 'Choose a .uf2 file with Browse.'; $('btn-fw-download').disabled = true; return; }
+  const f = fwManifest.files.find(x => x.path === sel.value);
+  fwStatus('Downloading firmware…');
+  const r = await fetch('firmware/' + f.path, { cache: 'no-store' });
+  fwBytes = new Uint8Array(await r.arrayBuffer());
+  fwLabel = `${f.name} v${f.version} (${f.commit})`;
+  const sum = await sha256hex(fwBytes);
+  const ok = !sum || sum === f.sha256;
+  $('fw-info').textContent = `${fwLabel}, ${f.size} bytes, ${f.board}${sum ? (ok ? ', checksum verified' : ', CHECKSUM MISMATCH') : ''}`;
+  $('btn-fw-download').disabled = false;
+  if (!ok) { fwBytes = null; fwStatus('Checksum mismatch, refusing to flash this file.', 'dirty'); return; }
+  try { PB.parseUf2(fwBytes); } catch (e) { fwBytes = null; fwStatus('Not a valid RP2040 UF2: ' + e.message, 'dirty'); return; }
+  fwStatus('Firmware ready. Step 1 when you want to update a device.');
+}
+
+$('fw-select').onchange = selectFirmware;
+$('btn-fw-pick').onclick = () => $('fw-file').click();
+$('fw-file').onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  fwBytes = new Uint8Array(await file.arrayBuffer());
+  fwLabel = file.name;
+  try { const p = PB.parseUf2(fwBytes); $('fw-info').textContent = `${file.name}, ${fwBytes.length} bytes, ${p.blocks.length} blocks`; fwStatus('Firmware ready. Step 1 when you want to update a device.'); $('btn-fw-download').disabled = false; }
+  catch (err) { fwBytes = null; fwStatus('Not a valid RP2040 UF2: ' + err.message, 'dirty'); }
+  $('fw-select').value = 'file';
+};
+$('btn-fw-download').onclick = () => {
+  if (!fwBytes) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([fwBytes], { type: 'application/octet-stream' }));
+  a.download = fwLabel.split(' ')[0].endsWith('.uf2') ? fwLabel.split(' ')[0] : 'elrs_sim_rx.uf2';
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+
+$('btn-fw-step1').onclick = async () => {
+  if (!fwBytes) { fwStatus('Pick a firmware first.', 'dirty'); return; }
+  fwMock = dev instanceof MockDevice;
+  if (dev?.connected) {
+    fwLog('sending dfu, device will re-enumerate as RP2 Boot');
+    await cmd('dfu');
+    await dev.disconnect();
+    fwStatus('Device is rebooting into update mode. Wait two seconds, then step 2.');
+  } else {
+    fwStatus('No device connected: hold BOOT on the board while plugging it in, then step 2.');
+  }
+  fwStep1Done = true;
+  $('btn-fw-step2').disabled = false;
+};
+
+// Minimal in-page BOOTSEL simulator so the flow can be exercised in mock mode.
+class MockUsbDevice {
+  constructor() { this.configuration = null; this.writes = 0; }
+  async open() {} async close() {} async releaseInterface() {}
+  async selectConfiguration() { this.configuration = { interfaces: [{ interfaceNumber: 1, alternates: [{ interfaceClass: 0xff, endpoints: [{ direction: 'out', endpointNumber: 3, type: 'bulk' }, { direction: 'in', endpointNumber: 4, type: 'bulk' }] }] }] }; }
+  async claimInterface() {} async controlTransferOut() { return { status: 'ok' }; } async clearHalt() {}
+  async controlTransferIn() { return { status: 'ok', data: new DataView(new ArrayBuffer(16)) }; }
+  async transferOut(ep, data) { this.writes++; if (data.byteLength > 32) await new Promise(r => setTimeout(r, 8)); return { status: 'ok', bytesWritten: data.byteLength }; }
+  async transferIn() { return { status: 'ok', data: new DataView(new ArrayBuffer(0)) }; }
+}
+
+$('btn-fw-step2').onclick = async () => {
+  if (!fwBytes) return;
+  let usbDev;
+  if (fwMock) {
+    usbDev = new MockUsbDevice();
+    fwLog('mock BOOTSEL device');
+  } else {
+    if (!navigator.usb) { fwStatus('This browser has no WebUSB. Use the manual method below.', 'dirty'); return; }
+    try { usbDev = await PB.requestBootselDevice(navigator.usb); }
+    catch (e) { fwStatus('No device selected. If "RP2 Boot" was not listed, the board is not in update mode (or Windows needs the WinUSB driver, see below).', 'dirty'); return; }
+  }
+  $('btn-fw-step2').disabled = true; $('btn-fw-step1').disabled = true;
+  const pb = new PB.PicoBoot(usbDev, fwLog);
+  try {
+    fwStatus('Connecting to bootloader…');
+    await pb.open();
+    const plan = await pb.flashUf2(fwBytes, (p) => {
+      fwProgress(p.total ? p.done / p.total : 0);
+      fwStatus(p.phase === 'erase' ? `Erasing at 0x${p.addr.toString(16)}…` : p.phase === 'write' ? `Writing ${p.done} / ${p.total} bytes…` : 'Rebooting…');
+    });
+    fwProgress(1);
+    fwStatus(`Flashed ${fwLabel}: ${plan.flashBytes} bytes. The device is rebooting; Connect again in a few seconds.`, 'muted');
+    fwLog(`done, ${plan.flashBytes} bytes`);
+  } catch (e) {
+    fwStatus('Flash failed: ' + e.message, 'dirty');
+    fwLog('ERROR ' + e.message);
+  } finally {
+    await pb.close();
+    $('btn-fw-step1').disabled = false;
+    fwStep1Done = false;
+  }
+};
+
+loadManifest();
 
 buildChannels();
 setConnectedUi(false);
