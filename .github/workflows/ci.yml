@@ -1,8 +1,13 @@
 name: CI
 
+# Publishing, see docs/WEBUI.md "Hosting":
+#   tag v* (on main)   -> GitHub release with the firmware and page; this is the release build
+#   push to devel      -> rolling "devel-build" prerelease, replaced every time
+#   either of those    -> GitHub Pages rebuilt from the latest release plus the devel build
+# Pushes to main without a tag are built and tested only.
 on:
   push:
-    branches: [main]
+    branches: [main, devel]
     tags: ['v*']
   pull_request:
 
@@ -47,6 +52,8 @@ jobs:
           path: |
             firmware/build/elrs_sim_rx.uf2
             firmware/build/elrs_sim_rx.elf
+            firmware/build/elrs_sim_rx_lite.uf2
+            firmware/build/elrs_sim_rx_lite.elf
             firmware/build/manifest.json
 
   web:
@@ -68,28 +75,86 @@ jobs:
           name: web-screenshots
           path: tests/web/shots/
 
-  pages:
-    name: Publish web UI to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  release:
+    name: Publish release build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs: [firmware, web]
     permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: firmware
           path: firmware/build
+      - name: Package the page
+        run: tar czf web.tar.gz -C web .
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            firmware/build/elrs_sim_rx.uf2
+            firmware/build/elrs_sim_rx_lite.uf2
+            firmware/build/manifest.json
+            web.tar.gz
+          generate_release_notes: true
+
+  devel:
+    name: Publish development build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/devel'
+    runs-on: ubuntu-latest
+    needs: [firmware, web]
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: firmware/build
+      - name: Replace the rolling devel-build prerelease
+        run: |
+          tar czf web.tar.gz -C web .
+          git tag -f devel-build
+          git push -f origin devel-build
+          gh release view devel-build >/dev/null 2>&1 || gh release create devel-build --prerelease \
+            --title "Development build" --notes "Rolling build of the devel branch. Replaced on every push."
+          gh release upload devel-build --clobber \
+            firmware/build/elrs_sim_rx.uf2 firmware/build/elrs_sim_rx_lite.uf2 firmware/build/manifest.json web.tar.gz
+
+  pages:
+    name: Publish GitHub Pages
+    # Runs after whichever of release / devel ran. The github-pages environment must allow
+    # deployments from the devel branch and from v* tags (repo Settings > Environments).
+    if: >-
+      always() && github.event_name == 'push' &&
+      (needs.release.result == 'success' || needs.devel.result == 'success')
+    runs-on: ubuntu-latest
+    needs: [release, devel]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the latest release and the devel build
+        run: |
+          mkdir -p chan/release chan/devel
+          # "gh release view" with no tag is the latest full release, never a prerelease
+          if tag=$(gh release view --json tagName -q .tagName 2>/dev/null); then
+            gh release download "$tag" --dir chan/release --pattern '*.uf2' --pattern manifest.json --pattern web.tar.gz
+          fi
+          gh release download devel-build --dir chan/devel --pattern '*.uf2' --pattern manifest.json --pattern web.tar.gz || true
       - name: Assemble site
         run: |
-          mkdir -p site/firmware
-          cp web/* site/
-          cp firmware/build/elrs_sim_rx.uf2 firmware/build/manifest.json site/firmware/
+          tools/assemble_site.py --out site --release chan/release --devel chan/devel
           # Custom domain: set CNAME in repo variable PAGES_CNAME, or leave unset.
           if [ -n "${{ vars.PAGES_CNAME }}" ]; then echo "${{ vars.PAGES_CNAME }}" > site/CNAME; fi
       - uses: actions/configure-pages@v5
@@ -98,22 +163,3 @@ jobs:
           path: site
       - id: deploy
         uses: actions/deploy-pages@v4
-
-  release:
-    name: Attach firmware to release
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    needs: [firmware, web]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: firmware
-          path: firmware
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            firmware/elrs_sim_rx.uf2
-            firmware/manifest.json
-          generate_release_notes: true
