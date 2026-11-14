@@ -73,6 +73,43 @@ await page.screenshot({ path: `${OUT}/02-rx-off.png`, fullPage: false });
 await page.click('#btn-rxpower');
 await page.waitForTimeout(800);
 
+// Model match: sends the command and reports the result
+await page.selectOption('#sel-modelmatch', '7');
+await page.click('#btn-modelmatch');
+await page.waitForFunction(() => document.querySelector('#modelmatch-result').textContent !== '');
+check('model match reports sent', (await page.textContent('#modelmatch-result')) === 'sent: ID 7');
+
+// Receiver settings: load, render by type, write, model-match readback
+await page.click('#btn-rxs-load');
+await page.waitForSelector('#rxs-fields tr[data-field="9"]');
+check('rx settings device line', (await page.textContent('#rxs-device')).includes('Mock RX · 4.0.1'));
+check('rx settings rows (hidden one skipped)', (await page.locator('#rxs-fields tr').count()) === 8);
+check('rx selection shows value with units', (await page.locator('#rxs-fields tr[data-field="2"] select option:checked').textContent()) === '25mW');
+check('rx folder is a heading', (await page.locator('#rxs-fields tr[data-field="3"] th').textContent()) === 'Team Race');
+check('rx folder child indented', (await page.locator('#rxs-fields tr[data-field="4"] td.sub').count()) === 1);
+check('rx number field', (await page.inputValue('#rxs-fields tr[data-field="5"] input')) === '2');
+check('rx info text maps arrow glyph', (await page.locator('#rxs-fields tr[data-field="9"] td').nth(1).textContent()) === '4.0.1 ↑');
+check('model match shows receiver value', (await page.textContent('#modelmatch-result')) === 'receiver reports: ID 7');
+await page.selectOption('#rxs-fields tr[data-field="2"] select', '3');
+await page.waitForFunction(() => document.querySelector('#sec-rxsettings').dataset.busy !== '1');
+check('rx selection write persisted', (await page.locator('#rxs-fields tr[data-field="2"] select option:checked').textContent()) === '100mW');
+await page.fill('#rxs-fields tr[data-field="5"] input', '9');
+await page.dispatchEvent('#rxs-fields tr[data-field="5"] input', 'change');
+await page.waitForFunction(() => document.querySelector('#sec-rxsettings').dataset.busy !== '1');
+check('rx number write clamped to max', (await page.inputValue('#rxs-fields tr[data-field="5"] input')) === '6');
+page.once('dialog', (d) => d.dismiss());
+await page.selectOption('#rxs-fields tr[data-field="1"] select', '2');
+await page.waitForTimeout(200);
+check('rx protocol change away from CRSF needs confirming', (await page.inputValue('#rxs-fields tr[data-field="1"] select')) === '0');
+await page.click('#rxs-fields tr[data-field="7"] button');
+await page.waitForFunction(() => document.querySelector('#rxs-fields tr[data-field="7"] span').textContent === 'done');
+check('rx command ran to completion', true);
+await page.selectOption('#sel-modelmatch', 'off');
+await page.click('#btn-modelmatch');
+await page.waitForFunction(() => document.querySelector('#modelmatch-result').textContent === 'receiver reports: Off');
+check('model match set reads back from receiver', true);
+await page.screenshot({ path: `${OUT}/07-rx-settings.png`, fullPage: true });
+
 // Save clears dirty
 await page.click('#btn-save');
 await page.waitForTimeout(1300);
@@ -83,13 +120,57 @@ await page.click('#btn-defaults');
 await page.waitForTimeout(600);
 check('defaults restored axis 0 to ch1', (await page.inputValue('#ax-ch-0')) === '1');
 
-// Developer toggle: console hidden by default, shown after toggle
-check('console hidden by default', !(await page.locator('#console').isVisible()));
-check('firmware panel visible by default', await page.locator('#sec-firmware').isVisible());
-await page.click('#btn-dev');
+// Profiles: save the mapping to a second slot, switch between them, delete one
+check('profile controls shown', await page.locator('#profile-box').isVisible());
+check('one profile to start with', (await page.locator('#sel-profile option').count()) === 1);
+check('sixteen slots offered', (await page.locator('#sel-slot option').count()) === 16);
+await page.selectOption('#ax-ch-1', '6');
+await page.waitForTimeout(300);
+await page.selectOption('#sel-slot', '2');
+await page.fill('#in-profile-name', 'Lift"off');
+await page.click('#btn-profile-save');
+await page.waitForTimeout(600);
+check('saving to slot 2 makes it active', (await page.inputValue('#sel-profile')) === '2');
+check('profile name is cleaned and shown', (await page.locator('#sel-profile option:checked').textContent()) === '2: Liftoff');
+check('saving clears the unsaved marker', !(await page.locator('#dirty').isVisible()));
+await page.selectOption('#sel-profile', '1');
+await page.waitForTimeout(600);
+check('profile 1 brings its own mapping back', (await page.inputValue('#ax-ch-1')) === '2');
+await page.selectOption('#sel-profile', '2');
+await page.waitForTimeout(600);
+check('profile 2 kept its mapping', (await page.inputValue('#ax-ch-1')) === '6');
+await page.selectOption('#sel-slot', '2');
+page.once('dialog', (d) => d.accept());
+await page.click('#btn-profile-delete');
+await page.waitForTimeout(400);
+check('the active profile cannot be deleted', (await page.textContent('#profile-result')).includes('cannot delete the active profile'));
+await page.selectOption('#sel-slot', '1');
+await page.fill('#in-profile-name', 'Velocidrone');
+await page.click('#btn-profile-rename');
+await page.waitForTimeout(400);
+check('rename shows in the slot list', (await page.locator('#sel-slot option').first().textContent()) === '1: Velocidrone');
+page.once('dialog', (d) => d.accept());
+await page.click('#btn-profile-delete');
+await page.waitForTimeout(400);
+check('deleting profile 1 leaves one profile', (await page.locator('#sel-profile option').count()) === 1);
+check('slot 1 reads empty again', (await page.locator('#sel-slot option').first().textContent()) === '1: (empty)');
+await page.screenshot({ path: `${OUT}/10-profiles.png`, fullPage: true });
+
+// Tabs: the console, receiver update guide and dongle firmware each have their own page
+check('console hidden on the controller page', !(await page.locator('#console').isVisible()));
+check('firmware panel hidden on the controller page', !(await page.locator('#sec-firmware').isVisible()));
+await page.click('#tab-rxfw');
 await page.waitForTimeout(200);
-check('console visible in dev mode', await page.locator('#console').isVisible());
-check('counters visible in dev mode', await page.locator('#st-frames').isVisible());
+check('receiver firmware guide visible on its tab', await page.locator('#sec-rxfw').isVisible());
+check('channels hidden on the receiver firmware tab', !(await page.locator('#channels').isVisible()));
+await page.screenshot({ path: `${OUT}/08-receiver-firmware.png`, fullPage: true });
+await page.click('#tab-console');
+await page.waitForTimeout(200);
+check('console visible on its tab', await page.locator('#console').isVisible());
+check('counters visible on the console tab', await page.locator('#st-frames').isVisible());
+await page.waitForTimeout(1200);   // at least one status poll
+check('status polling stays out of the console', !(await page.textContent('#console')).includes('> status'));
+check('counters still update from the quiet poll', /^\d+ \/ \d+ \/ \d+$/.test((await page.textContent('#st-frames')).trim()), await page.textContent('#st-frames'));
 
 // Raw console command
 await page.fill('#in-cmd', 'version');
@@ -103,7 +184,12 @@ await page.press('#in-cmd', 'Enter');
 await page.waitForTimeout(300);
 check('console shows error for unknown command', (await page.textContent('#console')).includes('error: unknown command'));
 
+await page.screenshot({ path: `${OUT}/09-console.png`, fullPage: true });
+
 // Firmware update flow against the in-page mock BOOTSEL device
+await page.click('#tab-fw');
+await page.waitForTimeout(200);
+check('firmware panel visible on its tab', await page.locator('#sec-firmware').isVisible());
 const uf2 = process.env.UF2_PATH || '/work/firmware/build/elrs_sim_rx.uf2';
 await page.setInputFiles('#fw-file', uf2);
 await page.waitForTimeout(400);
@@ -124,8 +210,22 @@ await page.screenshot({ path: `${OUT}/06-firmware-flashed-dev.png`, fullPage: tr
 
 // Reconnect mock for the remaining checks
 await page.click('#link-mock');
+await page.click('#tab-main');
 await page.waitForTimeout(1200);
 check('reconnected after flash', await page.locator('#btn-disconnect').isVisible());
+
+// One-click update: enters update mode and flashes with no second click
+await page.click('#tab-fw');
+await page.evaluate(() => { document.getElementById('fw-status').textContent = ''; });
+await page.click('#btn-fw-auto');
+await page.waitForFunction(() => document.getElementById('fw-status').textContent.startsWith('Flashed'), null, { timeout: 15000 }).catch(() => {});
+check('one-click update completed', (await page.textContent('#fw-status')).startsWith('Flashed'), await page.textContent('#fw-status'));
+check('one-click update disconnected the device', await page.locator('#btn-connect').isVisible());
+check('update button usable again', !(await page.locator('#btn-fw-auto').isDisabled()));
+await page.click('#link-mock');
+await page.click('#tab-main');
+await page.waitForTimeout(1200);
+check('reconnected after one-click update', await page.locator('#btn-disconnect').isVisible());
 
 // Dark mode
 await page.emulateMedia({ colorScheme: 'dark' });

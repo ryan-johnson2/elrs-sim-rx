@@ -21,7 +21,7 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-  header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); }
   header h1 { font-size: 18px; margin: 0; flex: 1; white-space: nowrap; }
   @media (max-width: 560px) {
     header { gap: 8px; padding: 10px 12px; }
@@ -49,11 +49,14 @@
   .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
   .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
   .channels { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; }
+  .channels.stale { opacity: .45; }
   .ch { display: grid; grid-template-columns: 34px 1fr 48px; gap: 8px; align-items: center; font-size: 13px; font-variant-numeric: tabular-nums; }
   .ch .bar { height: 10px; background: var(--bar-bg); border-radius: 5px; position: relative; overflow: hidden; }
   .ch .bar i { position: absolute; top: 0; bottom: 0; background: var(--bar); border-radius: 5px; }
   .ch .bar b { position: absolute; top: -2px; bottom: -2px; width: 1px; left: 50%; background: var(--muted); opacity: .5; }
   .tbl { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #rxs-fields td.sub { padding-left: 22px; }
+  #rxs-fields th { padding-top: 10px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
   th { color: var(--muted); font-weight: 500; }
@@ -65,7 +68,15 @@
   .dirty { color: var(--warn); font-size: 13px; }
   .banner { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--warn); color: var(--warn); font-size: 14px; }
   .hidden { display: none !important; }
-  body:not(.dev) .dev { display: none !important; }
+  nav#tabs { display: flex; gap: 4px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; }
+  nav#tabs a { padding: 9px 12px; color: var(--muted); text-decoration: none; font-size: 14px; white-space: nowrap; border-bottom: 2px solid transparent; }
+  nav#tabs a.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  main > section { display: none; }
+  body[data-page="main"] section[data-page="main"], body[data-page="rxfw"] section[data-page="rxfw"],
+  body[data-page="fw"] section[data-page="fw"], body[data-page="console"] section[data-page="console"] { display: block; }
+  ol.steps { margin: 10px 0; padding-left: 22px; display: grid; gap: 8px; max-width: 75ch; }
+  section h3 { font-size: 14px; margin: 14px 0 6px; }
+  section p { max-width: 75ch; }
   .progress { height: 10px; background: var(--bar-bg); border-radius: 5px; overflow: hidden; margin: 8px 0; }
   .progress i { display: block; height: 100%; width: 0; background: var(--bar); transition: width .15s linear; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
@@ -81,54 +92,58 @@
   <h1>ELRS Sim RX</h1>
   <span id="pill-link" class="pill"><span class="dot"></span><span>no device</span></span>
   <span id="pill-rx" class="pill"><span class="dot"></span><span>RX ?</span></span>
-  <button id="btn-dev" class="toggle" title="Show developer panels: console, counters, flash log">Dev</button>
   <button id="btn-connect" class="primary">Connect</button>
   <button id="btn-disconnect" class="hidden">Disconnect</button>
 </header>
+<nav id="tabs">
+  <a href="#main" id="tab-main" data-page="main">Controller</a>
+  <a href="#receiver-update" id="tab-rxfw" data-page="rxfw">Receiver firmware</a>
+  <a href="#firmware" id="tab-fw" data-page="fw">Dongle firmware</a>
+  <a href="#console" id="tab-console" data-page="console">Console</a>
+</nav>
 
 <main>
   <div id="no-serial" class="banner wide hidden">
     This browser has no Web Serial support. Use Chrome, Edge or Opera on desktop, or run the device console from a terminal.
   </div>
 
-  <section>
-    <h2>Status <span class="spacer"></span><span id="dirty" class="dirty hidden">unsaved changes</span></h2>
-    <dl class="kv">
-      <dt>Firmware</dt><dd id="st-version">–</dd>
-      <dt>Link</dt><dd id="st-link">–</dd>
-      <dt>LQ / RSSI / SNR</dt><dd id="st-lq">–</dd>
-      <dt>Packet mode</dt><dd id="st-rfmode">–</dd>
-      <dt>LED</dt><dd id="st-led">–</dd>
-      <dt>Failsafe</dt><dd id="st-fs">–</dd>
-      <dt class="dev">Frames ok / crc / timeout</dt><dd class="dev" id="st-frames">–</dd>
-      <dt class="dev">HID sent / dropped</dt><dd class="dev" id="st-hid">–</dd>
-    </dl>
+  <section class="wide" data-page="main">
+    <h2>Profile and saving
+      <span class="spacer"></span>
+      <span id="dirty" class="dirty hidden">unsaved changes</span>
+      <button id="btn-save" class="primary">Save to device</button>
+      <button id="btn-defaults">Load defaults</button>
+    </h2>
+    <div id="profile-box" class="hidden">
+      <div class="row" style="margin-bottom:10px">
+        <label>Active profile
+          <select id="sel-profile"></select>
+        </label>
+        <span class="muted">Switching loads that profile's axes, buttons, throttle axis and failsafe time.</span>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <label>Slot
+          <select id="sel-slot"></select>
+        </label>
+        <label>Name
+          <input type="text" id="in-profile-name" maxlength="15" placeholder="optional" style="width:150px" autocomplete="off">
+        </label>
+        <button id="btn-profile-save">Save current mapping here</button>
+        <button id="btn-profile-rename">Rename</button>
+        <button id="btn-profile-delete" class="danger">Delete</button>
+        <span class="muted" id="profile-result"></span>
+      </div>
+    </div>
+    <div class="muted">Mapping changes apply instantly on the device but are lost at reboot until saved. <b>Save to device</b>
+      writes them to the active profile. The dongle holds 16 profiles.</div>
   </section>
 
-  <section>
-    <h2>Receiver</h2>
-    <div class="row" style="margin-bottom:10px">
-      <button id="btn-rxpower">RX power: ?</button>
-      <button id="btn-bind">Bind (serial)</button>
-      <button id="btn-bindcycle" title="Three power cycles, for receivers that ignore the serial bind command">Bind (power cycle)</button>
-    </div>
-    <div class="row" style="margin-bottom:10px">
-      <label><input type="checkbox" id="cb-rxboot"> Power receiver on plug-in</label>
-    </div>
-    <div class="muted">
-      Receiver firmware and bind phrase are flashed with the
-      <a href="https://expresslrs.github.io/web-flasher/" target="_blank" rel="noopener">ExpressLRS Web Flasher</a>
-      using the <b>Betaflight passthrough</b> method. Disconnect here first, since only one page can hold the serial port.
-      <button id="btn-rxbootloader" class="hidden">RX bootloader</button>
-    </div>
-  </section>
-
-  <section class="wide">
+  <section class="wide" data-page="main">
     <h2>Channels <span class="spacer"></span><span id="ch-rate" class="muted"></span></h2>
     <div id="channels" class="channels"></div>
   </section>
 
-  <section>
+  <section data-page="main">
     <h2>Axes</h2>
     <div class="tbl"><table>
       <thead><tr><th>Axis</th><th>Channel</th><th>Invert</th><th>Value</th></tr></thead>
@@ -144,7 +159,7 @@
     </div>
   </section>
 
-  <section>
+  <section data-page="main">
     <h2>Buttons <span class="spacer"></span>
       <button id="btn-buttons-toggle">Show all 36</button>
     </h2>
@@ -155,53 +170,167 @@
     <p class="muted">Default: channels 5 to 16 each give three buttons (low, mid, high). In ELRS Hybrid or Wide switch mode, channels 15 and 16 carry LQ and RSSI; set buttons 30 to 35 to "none" or use Full Res 16ch.</p>
   </section>
 
-  <section class="wide">
-    <h2>Config
-      <span class="spacer"></span>
-      <button id="btn-save" class="primary">Save to device</button>
-      <button id="btn-defaults">Load defaults</button>
-      <button id="btn-reboot">Reboot</button>
-      <button id="btn-dfu" class="danger" title="Reboot into UF2 bootloader for a firmware update">Firmware update mode</button>
-    </h2>
-    <div class="muted">Mapping changes apply instantly on the device but are lost at reboot until saved.</div>
+  <section data-page="main">
+    <h2>Status</h2>
+    <dl class="kv">
+      <dt>Firmware</dt><dd id="st-version">–</dd>
+      <dt>Link</dt><dd id="st-link">–</dd>
+      <dt>LQ / RSSI / SNR</dt><dd id="st-lq">–</dd>
+      <dt>Packet mode</dt><dd id="st-rfmode">–</dd>
+      <dt>LED</dt><dd id="st-led">–</dd>
+      <dt>Failsafe</dt><dd id="st-fs">–</dd>
+    </dl>
   </section>
 
-  <section class="wide" id="sec-firmware">
-    <h2>Firmware <span class="spacer"></span><span id="fw-current" class="muted"></span></h2>
+  <section data-page="main">
+    <h2>Receiver</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="btn-rxpower">RX power: ?</button>
+      <button id="btn-bind">Bind (serial)</button>
+      <button id="btn-bindcycle" title="Three power cycles, for receivers that ignore the serial bind command">Bind (power cycle)</button>
+    </div>
+    <div class="muted" style="margin-bottom:10px">
+      <b>Bind</b> puts the receiver into bind mode. Then choose Bind in the radio's ExpressLRS Lua script: the receiver
+      takes on the radio's bind phrase and keeps it. There is no way to type a bind phrase into the receiver over this
+      link; to set one without the radio, reflash the receiver from the <a href="#receiver-update">Receiver firmware</a> tab.
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label><input type="checkbox" id="cb-rxboot"> Power receiver on plug-in</label>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label>Model match
+        <select id="sel-modelmatch"></select>
+      </label>
+      <button id="btn-modelmatch">Set on receiver</button>
+      <span class="muted" id="modelmatch-result"></span>
+    </div>
+    <div class="muted" style="margin-bottom:10px">
+      Use the radio model's <b>Receiver number</b> when Model Match is on in the ExpressLRS Lua script, or Off when it is not.
+      The receiver stores the ID; load the receiver settings to see what it currently holds. A mismatch looks like a
+      receiver that sends nothing: radio on, no link, LED showing the WiFi pattern.
+    </div>
+    <div class="muted">
+      To update the receiver's firmware or change its bind phrase, see the <a href="#receiver-update">Receiver firmware</a> tab.
+      <button id="btn-rxbootloader" class="hidden">RX bootloader</button>
+    </div>
+  </section>
+
+  <section id="sec-rxsettings" data-page="main">
+    <h2>Receiver settings <span class="spacer"></span><span id="rxs-device" class="muted"></span></h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="btn-rxs-load">Load from receiver</button>
+      <span class="muted" id="rxs-status"></span>
+    </div>
+    <div class="tbl"><table><tbody id="rxs-fields"></tbody></table></div>
+    <div class="muted" style="margin-top:10px">
+      The settings the ExpressLRS Lua script shows for the receiver, read over the serial link. Needs ExpressLRS 4.0 or
+      newer on the receiver. Changes are stored by the receiver straight away.
+    </div>
+  </section>
+
+
+  <section class="wide" data-page="rxfw" id="sec-rxfw">
+    <h2>Update the receiver's ExpressLRS firmware</h2>
+    <p class="muted">The dongle passes the ExpressLRS flasher straight through to the receiver, the way a flight controller
+      does. Use this to update the receiver, change its bind phrase or change its options.</p>
+    <ol class="steps">
+      <li><b>Switch your radio off.</b> With it on, stick data gets mixed into what the flasher reads, and the flash
+        fails or sits on "Connecting".</li>
+      <li><b>Check the receiver has power.</b> On the button version the ring should be lit or blinking, not dark. On
+        the lite version it is on whenever the dongle is plugged in.</li>
+      <li><b>Free the serial port.</b> Only one page can use it at a time.
+        <button id="btn-rxfw-disconnect">Disconnect this page</button></li>
+      <li><b>Open the flasher:</b> the
+        <a href="https://expresslrs.github.io/web-flasher/" target="_blank" rel="noopener">ExpressLRS Web Flasher</a>
+        in this browser, or the ExpressLRS Configurator app.</li>
+      <li><b>Choose what to flash.</b> Pick the ExpressLRS version that matches your transmitter module (the major
+        version must be the same), then your receiver, for example "HappyModel EP1/EP2 2.4GHz RX" or
+        "RadioMaster RP3 2.4GHz RX". Enter your bind phrase.</li>
+      <li><b>Choose the Betaflight passthrough method</b> and start the flash. When asked for a serial port, pick
+        <b>ELRS Sim RX</b>.</li>
+      <li><b>Wait for it to finish.</b> The status light shows a blip and two flickers while the dongle is passing data
+        through. About 10 seconds after the flasher lets go of the port, the dongle returns to normal.</li>
+      <li><b>Come back here and Connect.</b> Switch the radio on and the link should come up. If you use Model Match,
+        set it on the Controller tab.</li>
+    </ol>
+    <h3>If it does not work</h3>
+    <div class="tbl"><table>
+      <tr><th>What you see</th><th>What to do</th></tr>
+      <tr><td>"Wrong target selected" or "Target mismatch, flashing cancelled"</td>
+        <td>The receiver reported a different firmware name from the one being flashed. This is expected when it still
+          has older firmware. Check you picked the right receiver, then flash again and choose to flash anyway.</td></tr>
+      <tr><td>"Cannot detect RX target", then "Connecting..." without end</td>
+        <td>The flasher is not reaching the receiver. Check the radio is off and the receiver has power, then try
+          again. If it still fails, update the dongle's own firmware on the Dongle firmware tab.</td></tr>
+      <tr><td>"Serial Receiver UART is inverted"</td>
+        <td>The dongle's firmware is too old. Update it on the Dongle firmware tab.</td></tr>
+      <tr><td>A warning about the crystal frequency</td>
+        <td>Harmless. The flasher estimates the receiver's clock from serial timing, which is slightly off through
+          the dongle.</td></tr>
+      <tr><td>The flash stopped partway</td>
+        <td>The receiver's bootloader is still intact. Switch the receiver off and on (or replug the dongle) and
+          flash again.</td></tr>
+    </table></div>
+    <p class="muted">Without the dongle: a receiver left powered for about a minute with no radio starts its own WiFi
+      hotspot, named "ExpressLRS RX" with password <b>expresslrs</b>, and can be updated from the page at 10.0.0.1.</p>
+  </section>
+
+  <section class="wide" id="sec-firmware" data-page="fw">
+    <h2>Dongle firmware <span class="spacer"></span><span id="fw-current" class="muted"></span>
+      <button id="btn-reboot" title="Restart the dongle. Unsaved mapping changes are lost.">Reboot dongle</button>
+    </h2>
     <div class="row" style="margin-bottom:8px">
       <select id="fw-select"><option value="file">Choose a .uf2 file…</option></select>
       <input type="file" id="fw-file" accept=".uf2" class="hidden">
       <button id="btn-fw-pick">Browse…</button>
       <button id="btn-fw-download">Download UF2</button>
       <span class="spacer"></span>
+      <button id="btn-fw-auto" class="primary">Update firmware</button>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <label class="muted"><input type="checkbox" id="cb-fw-nodrive"> Do not show the RPI-RP2 drive while updating</label>
+      <span class="spacer"></span>
+      <span class="muted">Step by step:</span>
       <button id="btn-fw-step1">1. Enter update mode</button>
-      <button id="btn-fw-step2" class="primary" disabled>2. Select device and flash</button>
+      <button id="btn-fw-step2" disabled>2. Select device and flash</button>
     </div>
     <div id="fw-info" class="muted"></div>
     <div class="progress"><i id="fw-bar"></i></div>
-    <div id="fw-status" class="muted">Pick a firmware, then step 1 puts a connected device into update mode. Step 2 opens the browser's USB picker: choose "RP2 Boot".</div>
-    <div id="fw-log" class="console dev" style="height:120px; margin-top:8px"></div>
+    <div id="fw-status" class="muted">Pick a firmware, then Update firmware. The first time, the browser asks you to choose "RP2 Boot"; after that it is one click.</div>
+    <details style="margin-top:8px">
+      <summary>Flash log</summary>
+      <div id="fw-log" class="console" style="height:120px; margin-top:8px"></div>
+    </details>
     <details style="margin-top:8px">
       <summary>Manual method, no WebUSB needed</summary>
       <ol>
         <li>Download the UF2 above.</li>
-        <li>Hold BOOT on the board while plugging it in (or use step 1 above). A drive named <b>RPI-RP2</b> appears.</li>
+        <li>Put the board in update mode: <button id="btn-dfu" title="Reboot into the UF2 bootloader">Enter update mode</button>
+          or hold BOOT on the board while plugging it in. A drive named <b>RPI-RP2</b> appears.</li>
         <li>Copy the UF2 onto that drive. The board reboots into the new firmware.</li>
       </ol>
-      <p class="muted">Windows: the WebUSB route needs the WinUSB driver bound to "RP2 Boot (Interface 1)" with Zadig, once. See docs/WINDOWS.md. The manual method needs no driver.</p>
+      <p class="muted">Windows: updating from this page needs the WinUSB driver bound to "RP2 Boot (Interface 1)" with Zadig, once. See docs/WINDOWS.md. The manual method needs no driver.</p>
+      <p class="muted">"Do not show the RPI-RP2 drive" starts the bootloader without its drive, so no Explorer window opens. The manual method cannot be used in that mode, and on Windows the bootloader may need the WinUSB driver installed again for it. If the dongle is not found, replug it and it starts normally.</p>
     </details>
   </section>
 
-  <section class="wide dev">
+  <section class="wide" data-page="console">
     <h2>Console <span class="spacer"></span>
       <label class="muted" style="font-weight:400"><input type="checkbox" id="cb-show-stream"> show channel stream</label>
+      <label class="muted" style="font-weight:400"><input type="checkbox" id="cb-show-poll"> show status polling</label>
       <button id="btn-clear">Clear</button>
     </h2>
+    <dl class="kv" style="margin-bottom:10px">
+      <dt>Frames ok / crc / timeout</dt><dd id="st-frames">–</dd>
+      <dt>HID sent / dropped</dt><dd id="st-hid">–</dd>
+    </dl>
     <div id="console" class="console"></div>
     <form id="form-cmd" class="row" style="margin-top:8px">
       <input type="text" id="in-cmd" placeholder="command, e.g. status" style="flex:1" autocomplete="off">
       <button type="submit">Send</button>
     </form>
+    <p class="muted" style="margin-top:8px">Type <b>help</b> for the command list. The page asks the dongle for its status once a second to keep the
+      Controller tab current; those requests are left out of this log unless you tick "show status polling".</p>
   </section>
 </main>
 
@@ -253,22 +382,22 @@ class Device {
     }
   }
   handleLine(line) {
-    this.onLine(line, 'rx');
-    if (line[0] !== '{') return;
-    let obj;
-    try { obj = JSON.parse(line); } catch { return; }
-    if (obj.ch) { this.onChannels(obj); return; }
-    const p = this.pending.shift();
+    let obj = null;
+    if (line[0] === '{') { try { obj = JSON.parse(line); } catch {} }
+    if (obj && obj.ch) { this.onLine(line, 'rx'); this.onChannels(obj); return; }
+    // A quiet command (background polling) keeps both itself and its reply out of the console.
+    const p = obj ? this.pending.shift() : null;
+    if (!(p && p.quiet)) this.onLine(line, 'rx');
     if (p) { clearTimeout(p.timer); p.resolve(obj); }
   }
-  send(cmd, { expectReply = true, timeoutMs = 2000 } = {}) {
+  send(cmd, { expectReply = true, timeoutMs = 2000, quiet = false } = {}) {
     if (!this.writer) return Promise.reject(new Error('not connected'));
-    this.onLine(cmd, 'tx');
+    if (!quiet) this.onLine(cmd, 'tx');
     const data = new TextEncoder().encode(cmd + '\n');
     const written = this.writer.write(data);
     if (!expectReply) return written;
     return new Promise((resolve, reject) => {
-      const entry = { resolve, reject };
+      const entry = { resolve, reject, quiet };
       entry.timer = setTimeout(() => {
         const idx = this.pending.indexOf(entry);
         if (idx >= 0) this.pending.splice(idx, 1);
@@ -298,11 +427,28 @@ class Device {
 class MockDevice extends Device {
   constructor() {
     super();
-    this.state = { rx_power: true, rxboot: true, dirty: false, stream: false, interval: 50, fs: 100,
+    const sel = (name, options, value, extra = {}) => ({ parent: 0, type: 9, hidden: false, name, options, value, min: 0, max: options.split(';').length - 1, units: '', ...extra });
+    const rxp = [
+      sel('Protocol', 'CRSF;Inverted CRSF;SBUS;Inverted SBUS', 0),
+      sel('Tlm Power', '10;25;50;100', 1, { units: 'mW' }),
+      { parent: 0, type: 11, hidden: false, name: 'Team Race', children: [4, 5] },
+      sel('Channel', 'AUX2;AUX3;AUX4', 0, { parent: 3 }),
+      { parent: 3, type: 0, hidden: false, name: 'Position', value: 2, min: 1, max: 6, units: '' },
+      sel('Antenna Mode', 'Antenna A;Antenna B;Diversity', 2, { hidden: true }),
+      { parent: 0, type: 13, hidden: false, name: 'Enter Bind Mode', step: 0, timeout: 200, text: '' },
+      { parent: 0, type: 12, hidden: false, name: 'Model Id', text: 'Off' },
+      { parent: 0, type: 12, hidden: false, name: 'ISM2G4', text: '4.0.1 \u00c0' },
+    ];
+    this.state = { rxp, modelId: 'off', rx_power: true, rxboot: true, dirty: false, stream: false, interval: 50, fs: 100,
       axes: [1,2,3,4,5,6,7,8], invert: 0, buttons: [], throttle: 2 };
     for (let i = 0; i < 36; i++) this.state.buttons.push({ ch: 5 + Math.floor(i / 3), level: ['low','mid','high'][i % 3] });
+    this.blank = this.snap();
+    this.state.active = 1;
+    this.state.profiles = Array.from({ length: 16 }, (_, i) => ({ used: i === 0, name: '', data: i === 0 ? this.snap() : null }));
     this.t = 0;
   }
+  snap() { const s = this.state; return JSON.parse(JSON.stringify({ axes: s.axes, invert: s.invert, buttons: s.buttons, throttle: s.throttle, fs: s.fs })); }
+  plist() { const s = this.state; return { ok: true, active: s.active, profiles: s.profiles.map((p, i) => ({ n: i + 1, used: p.used, name: p.name || `Profile ${i + 1}` })) }; }
   get connected() { return this._on; }
   async connect() { this._on = true; this.timer = setInterval(() => this.tick(), this.state.interval); }
   tick() {
@@ -323,20 +469,21 @@ class MockDevice extends Device {
   }
   reply(obj) { setTimeout(() => this.handleLine(JSON.stringify(obj)), 15); }
   send(cmd, opts = {}) {
-    this.onLine(cmd, 'tx');
+    if (!opts.quiet) this.onLine(cmd, 'tx');
     const a = cmd.trim().split(/\s+/); const s = this.state;
     const p = opts.expectReply === false ? Promise.resolve() : new Promise((res, rej) => {
-      const e = { resolve: res, reject: rej, timer: setTimeout(() => rej(new Error('timeout')), 2000) };
+      const e = { resolve: res, reject: rej, quiet: !!opts.quiet, timer: setTimeout(() => rej(new Error('timeout')), 2000) };
       this.pending.push(e);
     });
     switch (a[0]) {
-      case 'version': this.reply({ product: 'ELRS Sim RX', version: 'mock' }); break;
+      case 'version': this.reply({ product: 'ELRS Sim RX', version: 'mock', variant: 'full' }); break;
       case 'status': this.reply({ product: 'ELRS Sim RX', version: 'mock', uptime_ms: Math.round(this.t * 1000),
         rx_power: s.rx_power, link: s.rx_power, failsafe: !s.rx_power, led: s.rx_power ? 'connected' : 'off',
         lq: 99, rssi: -42, snr: 11, rfmode: 6, frames_ok: Math.round(this.t * 250), frames_crc_err: 0, frames_timeout: 1,
-        uart_overruns: 0, reports_sent: Math.round(this.t * 250), reports_dropped: 3, last_rc_age_ms: 3, config_dirty: s.dirty }); break;
+        uart_overruns: 0, reports_sent: Math.round(this.t * 250), reports_dropped: 3, last_rc_age_ms: 3, profile: s.active, config_dirty: s.dirty }); break;
       case 'map': this.reply({ axes: s.axes.map((c, i) => ({ name: ['X','Y','Z','Rx','Ry','Rz','Slider','Dial'][i], ch: c, invert: !!(s.invert >> i & 1) })),
-        buttons: s.buttons, throttle_axis: s.throttle, rx_power_on_boot: s.rxboot, failsafe_ms: s.fs }); break;
+        buttons: s.buttons, throttle_axis: s.throttle, rx_power_on_boot: s.rxboot, failsafe_ms: s.fs,
+        profile: s.active, profile_name: this.plist().profiles[s.active - 1].name }); break;
       case 'stream': s.stream = a[1] === 'on'; if (a[2]) s.interval = +a[2]; this.reply({ ok: true }); break;
       case 'axis': s.axes[+a[1]] = +a[2]; if (a[3] === 'invert') s.invert |= 1 << +a[1]; else s.invert &= ~(1 << +a[1]); s.dirty = true; this.reply({ ok: true }); break;
       case 'button': s.buttons[+a[1]] = { ch: +a[2], level: a[3] }; s.dirty = true; this.reply({ ok: true }); break;
@@ -344,10 +491,42 @@ class MockDevice extends Device {
       case 'failsafe': s.fs = +a[1]; s.dirty = true; this.reply({ ok: true }); break;
       case 'rxpower': s.rx_power = a[1] === 'on' ? true : a[1] === 'off' ? false : !s.rx_power; this.reply({ ok: true, rx_power: s.rx_power }); break;
       case 'rxboot': s.rxboot = a[1] === 'on'; s.dirty = true; this.reply({ ok: true }); break;
-      case 'save': s.dirty = false; this.reply({ ok: true }); break;
+      case 'save': s.profiles[s.active - 1].data = this.snap(); s.dirty = false; this.reply({ ok: true }); break;
+      case 'profile': {
+        const n = +a[2], p = s.profiles[n - 1];
+        const name = a.slice(3).join(' ').replace(/[^A-Za-z0-9 \-_.+()#]/g, '').trim().slice(0, 15);
+        if (!a[1] || a[1] === 'list') { this.reply(this.plist()); break; }
+        if (!p) { this.reply({ ok: false, error: 'usage: profile [use|save|name|delete] <1-16> [name]' }); break; }
+        if (a[1] === 'use') { if (!p.used) { p.used = true; p.data = JSON.parse(JSON.stringify(this.blank)); } Object.assign(s, JSON.parse(JSON.stringify(p.data))); s.active = n; s.dirty = false; }
+        else if (a[1] === 'save') { p.used = true; p.data = this.snap(); if (name) p.name = name; s.active = n; s.dirty = false; }
+        else if (a[1] === 'name') { if (!p.used) { this.reply({ ok: false, error: 'that slot is empty' }); break; } if (!name) { this.reply({ ok: false, error: 'name needs letters or digits' }); break; } p.name = name; }
+        else if (a[1] === 'delete') { if (n === s.active) { this.reply({ ok: false, error: 'cannot delete the active profile; switch to another first' }); break; } s.profiles[n - 1] = { used: false, name: '', data: null }; }
+        this.reply(this.plist()); break;
+      }
       case 'defaults': Object.assign(s, { axes: [1,2,3,4,5,6,7,8], invert: 0, throttle: 2, fs: 100, rxboot: true, dirty: true });
         s.buttons = []; for (let i = 0; i < 36; i++) s.buttons.push({ ch: 5 + Math.floor(i / 3), level: ['low','mid','high'][i % 3] });
         this.reply({ ok: true }); break;
+      case 'modelmatch':
+        if (!s.rx_power) this.reply({ ok: false, error: 'receiver is off' });
+        else if (a[1] === 'off' || (/^\d+$/.test(a[1]) && +a[1] <= 63)) { s.modelId = a[1]; this.reply({ ok: true }); }
+        else this.reply({ ok: false, error: 'usage: modelmatch <0-63|off>' });
+        break;
+      case 'rxinfo':
+        if (!s.rx_power) this.reply({ ok: false, error: 'receiver is off' });
+        else this.reply({ ok: true, name: 'Mock RX', serial: 0x454c5253, hw: 0, sw: '4.0.1', fields: s.rxp.length, param_version: 0 });
+        break;
+      case 'rxparam': {
+        const f = s.rxp[+a[1] - 1];
+        if (!s.rx_power) { this.reply({ ok: false, error: 'receiver is off' }); break; }
+        if (!f) { this.reply({ ok: false, error: 'no reply from receiver' }); break; }
+        if (a.length > 2) {
+          if (f.type === 13) f.step = +a[2] === 1 ? 2 : 0, f.text = f.step ? 'Entering...' : '';
+          else if ('value' in f) f.value = +a[2];
+        } else if (f.type === 13) { f.step = 0; f.text = ''; }
+        if (f.name === 'Model Id') f.text = s.modelId === 'off' ? 'Off' : s.modelId;
+        this.reply({ ok: true, id: +a[1], ...f });
+        break;
+      }
       case 'bind': case 'bindcycle': case 'rxbootloader': case 'reboot': case 'dfu': this.reply({ ok: true }); break;
       default: this.reply({ ok: false, error: 'unknown command (mock)' });
     }
@@ -450,7 +629,12 @@ function renderMap() {
 function renderChannels(obj) {
   lastCh = obj.ch;
   const now = performance.now(); frameTimes.push(now); while (frameTimes.length && now - frameTimes[0] > 2000) frameTimes.shift();
-  $('ch-rate').textContent = `${(frameTimes.length / 2).toFixed(0)} updates/s · LQ ${obj.lq} · ${obj.rssi} dBm`;
+  // With no link the dongle sends the PC its failsafe report, not these channels.
+  const fs = !obj.link;
+  $('channels').classList.toggle('stale', fs);
+  $('ch-rate').textContent = fs
+    ? 'No link. Bars show the last values received; the PC is getting the failsafe output (sticks centred, throttle low).'
+    : `${(frameTimes.length / 2).toFixed(0)} updates/s · LQ ${obj.lq} · ${obj.rssi} dBm`;
   obj.ch.forEach((v, i) => {
     const pct = Math.max(0, Math.min(1, (v - 172) / (1811 - 172)));
     const bar = $('chbar-' + i); const mid = 0.5;
@@ -459,8 +643,8 @@ function renderChannels(obj) {
     $('chval-' + i).textContent = v;
   });
   if (map) {
-    map.axes.forEach((a, i) => { const el = $('ax-val-' + i); if (el) el.textContent = a.ch ? chToAxis(obj.ch[a.ch - 1], a.invert) : 0; });
-    map.buttons.forEach((b, i) => { const el = $('bt-st-' + i); if (el) el.textContent = b.ch && pressed(obj.ch[b.ch - 1], b.level) ? '● pressed' : ''; });
+    map.axes.forEach((a, i) => { const el = $('ax-val-' + i); if (el) el.textContent = fs ? (i === map.throttle_axis ? (a.invert ? 32767 : -32767) : 0) : (a.ch ? chToAxis(obj.ch[a.ch - 1], a.invert) : 0); });
+    map.buttons.forEach((b, i) => { const el = $('bt-st-' + i); if (el) el.textContent = !fs && b.ch && pressed(obj.ch[b.ch - 1], b.level) ? '● pressed' : ''; });
   }
   setPill('pill-link', obj.link ? 'good' : 'warn', obj.link ? `link · LQ ${obj.lq}` : 'no link');
 }
@@ -477,32 +661,38 @@ function renderStatus(s) {
   $('st-hid').textContent = `${s.reports_sent} / ${s.reports_dropped}`;
   $('dirty').classList.toggle('hidden', !s.config_dirty);
   $('btn-rxpower').textContent = `RX power: ${s.rx_power ? 'ON' : 'OFF'}`;
-  setPill('pill-rx', s.rx_power ? 'good' : '', s.rx_power ? 'RX on' : 'RX off');
+  // The lite build has no receiver power switch, so its controls are hidden.
+  const lite = s.variant === 'lite';
+  $('btn-rxpower').classList.toggle('hidden', lite);
+  $('btn-bindcycle').classList.toggle('hidden', lite);
+  $('cb-rxboot').closest('.row').classList.toggle('hidden', lite);
+  setPill('pill-rx', s.rx_power ? 'good' : 'bad', s.rx_power ? 'RX on' : 'RX off');
   if (!s.rx_power) setPill('pill-link', '', 'RX off');
   else if (!s.link) setPill('pill-link', 'warn', 'no link');
 }
 
-async function cmd(c) {
+async function cmd(c, opts) {
   if (!dev?.connected) return;
   try {
-    const r = await dev.send(c);
+    const r = await dev.send(c, opts);
     if (r && r.ok === false) log('error: ' + r.error, 'err');
     return r;
   } catch (e) { log(e.message, 'err'); }
 }
 
 async function refreshMap() { const m = await cmd('map'); if (m) { map = m; renderMap(); } }
-async function refreshStatus() { const s = await cmd('status'); if (s) renderStatus(s); }
+// Runs once a second while connected. Kept out of the console unless asked for.
+async function refreshStatus() { const s = await cmd('status', { quiet: !$('cb-show-poll').checked }); if (s) renderStatus(s); }
 
 function setConnectedUi(on) {
   $('btn-connect').classList.toggle('hidden', on);
   $('btn-disconnect').classList.toggle('hidden', !on);
   for (const b of document.querySelectorAll('main button, main select, main input')) {
-    if (b.id === 'cb-show-stream' || b.id === 'btn-clear') continue;
+    if (b.id === 'cb-show-stream' || b.id === 'cb-show-poll' || b.id === 'btn-clear') continue;
     if (b.closest('#sec-firmware')) continue;
     b.disabled = !on;
   }
-  if (!on) { setPill('pill-link', '', 'no device'); setPill('pill-rx', '', 'RX ?'); $('ch-rate').textContent = ''; }
+  if (!on) { profiles = null; renderProfiles(); clearRxSettings(); setPill('pill-link', '', 'no device'); setPill('pill-rx', '', 'RX ?'); $('ch-rate').textContent = ''; }
 }
 
 async function connectWith(device, port) {
@@ -516,6 +706,7 @@ async function connectWith(device, port) {
   setConnectedUi(true);
   await cmd('stream off');
   await refreshMap();
+  await refreshProfiles();
   await refreshStatus();
   await cmd('stream on 50');
   statusTimer = setInterval(refreshStatus, 1000);
@@ -530,34 +721,250 @@ $('btn-connect').onclick = async () => {
   await connectWith(new Device(), port);
 };
 $('btn-disconnect').onclick = () => dev?.disconnect();
+$('btn-rxfw-disconnect').onclick = () => dev?.disconnect();
 $('link-mock').onclick = (e) => { e.preventDefault(); if (dev) return; connectWith(new MockDevice()); };
 
 $('btn-rxpower').onclick = () => cmd('rxpower toggle').then(refreshStatus);
 $('btn-bind').onclick = () => cmd('bind').then(refreshStatus);
 $('btn-bindcycle').onclick = () => cmd('bindcycle').then(refreshStatus);
+{
+  const sel = $('sel-modelmatch');
+  sel.add(new Option('Off', 'off'));
+  for (let i = 0; i <= 63; i++) sel.add(new Option(String(i), String(i)));
+  // Remembered per browser as a convenience only; the receiver holds the real value.
+  try { const v = localStorage.getItem('modelmatch'); if (v === 'off' || (/^\d+$/.test(v ?? '') && +v <= 63)) sel.value = v; } catch {}
+  $('btn-modelmatch').onclick = async () => {
+    const v = sel.value, out = $('modelmatch-result');
+    out.textContent = '';
+    const r = await cmd('modelmatch ' + v);
+    if (r?.ok) {
+      out.textContent = v === 'off' ? 'sent: model match off' : `sent: ID ${v}`;
+      try { localStorage.setItem('modelmatch', v); } catch {}
+      // If the settings are loaded we know where the receiver reports its ID:
+      // read it back once the receiver has saved.
+      const id = rxModelFieldId();
+      if (id) await rxLocked(async () => {
+        await new Promise((r) => setTimeout(r, 400));
+        const f = await cmd('rxparam ' + id);
+        if (f?.ok) { rxFields.set(id, f); renderRxFields(); }
+      });
+    } else {
+      out.textContent = r?.error ? `not sent: ${r.error}` : 'not sent';
+    }
+  };
+}
+// ---- Receiver settings (CRSF parameter protocol, via rxinfo / rxparam) ----
+const RXP = { SEL: 9, STR: 10, FOLDER: 11, INFO: 12, CMD: 13 };
+const rxFields = new Map();
+let rxBusy = false;
+// ExpressLRS puts its arrow glyphs at 0xC0/0xC1 of the handset font.
+const rxText = (s) => String(s ?? '').replace(/À/g, '↑').replace(/Á/g, '↓');
+const rxStatus = (t) => { $('rxs-status').textContent = t; };
+function rxError(r) {
+  const e = r?.error ?? 'no answer from the dongle';
+  if (e.startsWith('no reply')) return 'No reply. The receiver needs ExpressLRS 4.0 or newer, and must not be in WiFi mode.';
+  if (e.startsWith('unknown command')) return 'This dongle firmware was built without receiver settings.';
+  return e;
+}
+function rxModelFieldId() {
+  for (const [id, f] of rxFields) if (f.type === RXP.INFO && f.name === 'Model Id') return id;
+  return 0;
+}
+function clearRxSettings() {
+  rxBusy = false;
+  $('sec-rxsettings').dataset.busy = '';
+  rxFields.clear();
+  $('rxs-fields').replaceChildren();
+  $('rxs-device').textContent = '';
+  rxStatus('');
+}
+
+// One receiver request sequence at a time. Taken synchronously in the event
+// handler, so a second edit cannot start while a write or reload is running.
+function rxLock(on) {
+  rxBusy = on;
+  $('sec-rxsettings').dataset.busy = on ? '1' : '';
+  for (const el of $('sec-rxsettings').querySelectorAll('button, select, input')) el.disabled = on || !dev?.connected;
+}
+async function rxLocked(fn) {
+  if (rxBusy || !dev?.connected) return;
+  rxLock(true);
+  try { await fn(); } finally { rxLock(false); }
+}
+
+async function loadRxSettings() {
+  {
+    rxStatus('reading…');
+    const info = await cmd('rxinfo');
+    if (!info?.ok) { rxStatus(rxError(info)); return; }
+    $('rxs-device').textContent = `${rxText(info.name)} · ${info.sw}`;
+    const fresh = new Map();
+    let failed = null;
+    for (let id = 1; id <= info.fields; id++) {
+      rxStatus(`reading ${id} of ${info.fields}…`);
+      const f = await cmd('rxparam ' + id);
+      if (!f?.ok) { failed = f; break; }
+      fresh.set(id, f);
+    }
+    rxFields.clear();
+    for (const [id, f] of fresh) rxFields.set(id, f);
+    renderRxFields();
+    rxStatus(failed !== null ? `stopped at ${fresh.size + 1} of ${info.fields}: ${rxError(failed)}` : '');
+  }
+}
+
+async function writeRxField(id, value, bytes) {
+  const f = await cmd(`rxparam ${id} ${value} ${bytes}`);
+  if (!f?.ok) { rxStatus(rxError(f)); renderRxFields(); return; }
+  // One setting can show, hide or change others, so read them all again.
+  await loadRxSettings();
+}
+
+async function runRxCommand(id, out) {
+  let f = await cmd(`rxparam ${id} 1`);                       // click
+  for (let i = 0; i < 20 && f?.ok; i++) {
+    out.textContent = rxText(f.text);
+    if (f.step === 3) {                                        // asks for confirmation
+      f = await cmd(`rxparam ${id} ${confirm(rxText(f.text) || 'Confirm?') ? 4 : 5}`);
+    } else if (f.step === 2) {                                 // executing: poll
+      await new Promise((r) => setTimeout(r, 500));
+      f = await cmd(`rxparam ${id} 6`);
+    } else break;
+  }
+  if (!f?.ok) out.textContent = rxError(f);
+  else if (!out.textContent) out.textContent = 'done';
+}
+
+function renderRxFields() {
+  const rows = [];
+  for (const [id, f] of rxFields) {
+    if (f.hidden) continue;
+    const tr = document.createElement('tr');
+    tr.dataset.field = id;
+    if (f.type === RXP.FOLDER) {
+      const th = document.createElement('th');
+      th.colSpan = 2; th.textContent = rxText(f.name);
+      tr.append(th); rows.push(tr);
+      continue;
+    }
+    const name = document.createElement('td');
+    name.textContent = rxText(f.name);
+    if (f.parent) name.className = 'sub';
+    const val = document.createElement('td');
+    if (f.type === RXP.SEL) {
+      const sel = document.createElement('select');
+      f.options.split(';').forEach((label, i) => { if (label !== '') sel.add(new Option(rxText(label) + rxText(f.units), String(i))); });
+      sel.value = String(f.value);
+      sel.onchange = () => {
+        const label = sel.selectedOptions[0]?.textContent ?? '';
+        if (f.name === 'Protocol' && !/^CRSF/.test(label) &&
+            !confirm(`This dongle only understands CRSF. With "${label}" it will stop hearing the receiver, and the setting can then only be changed back from the receiver's WiFi page. Change it anyway?`)) {
+          sel.value = String(f.value);
+          return;
+        }
+        rxLocked(() => writeRxField(id, sel.value, 1));
+      };
+      val.append(sel);
+    } else if (f.type <= 5) {
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.min = f.min; inp.max = f.max; inp.value = f.value; inp.style.width = '90px';
+      inp.onchange = () => {
+        const v = Math.min(f.max, Math.max(f.min, Math.round(+inp.value || 0)));
+        rxLocked(() => writeRxField(id, v, 1 << (f.type >> 1)));
+      };
+      val.append(inp, ' ' + rxText(f.units));
+    } else if (f.type === RXP.CMD) {
+      const btn = document.createElement('button');
+      const out = document.createElement('span');
+      btn.textContent = 'Run'; out.className = 'muted'; out.style.marginLeft = '8px';
+      btn.onclick = () => rxLocked(() => runRxCommand(id, out));
+      val.append(btn, out);
+    } else if (f.type === RXP.INFO || f.type === RXP.STR) {
+      val.textContent = rxText(f.text);
+    } else {
+      val.textContent = `(type ${f.type} not shown)`; val.className = 'muted';
+    }
+    tr.append(name, val); rows.push(tr);
+  }
+  $('rxs-fields').replaceChildren(...rows);
+
+  // Mirror the receiver's model-match ID into the Receiver section.
+  const mid = rxFields.get(rxModelFieldId());
+  if (mid) {
+    const off = !/^\d+$/.test(mid.text);
+    $('modelmatch-result').textContent = `receiver reports: ${off ? 'Off' : 'ID ' + mid.text}`;
+    $('sel-modelmatch').value = off ? 'off' : mid.text;
+  }
+}
+$('btn-rxs-load').onclick = () => rxLocked(loadRxSettings);
+
 $('btn-rxbootloader').onclick = () => cmd('rxbootloader');
 $('btn-save').onclick = () => cmd('save').then(refreshStatus);
 $('btn-defaults').onclick = () => cmd('defaults').then(() => { refreshMap(); refreshStatus(); });
 $('btn-reboot').onclick = () => cmd('reboot').then(() => dev?.disconnect());
 $('btn-dfu').onclick = () => { if (confirm('Reboot into firmware update mode? The device will reappear as a USB drive named RPI-RP2.')) cmd('dfu').then(() => dev?.disconnect()); };
 $('btn-buttons-toggle').onclick = () => { showAllButtons = !showAllButtons; renderMap(); };
+
+// ---------------------------------------------------------------------------
+// Profiles: 16 named mappings kept on the dongle. Firmware without them answers
+// `profile` with an error and the controls stay hidden.
+// ---------------------------------------------------------------------------
+let profiles = null;
+function renderProfiles() {
+  $('profile-box').classList.toggle('hidden', !profiles);
+  if (!profiles) return;
+  const sel = $('sel-profile'), slot = $('sel-slot'), keep = slot.value;
+  sel.innerHTML = ''; slot.innerHTML = '';
+  for (const p of profiles.profiles) {
+    if (p.used) sel.add(new Option(`${p.n}: ${p.name}`, p.n));
+    slot.add(new Option(p.used ? `${p.n}: ${p.name}` : `${p.n}: (empty)`, p.n));
+  }
+  sel.value = profiles.active;
+  slot.value = keep || profiles.active;
+}
+async function refreshProfiles() { const r = await cmd('profile'); profiles = r?.profiles ? r : null; renderProfiles(); }
+async function profileCmd(c) {
+  const out = $('profile-result'); out.textContent = '';
+  const r = await cmd(c);
+  if (r?.profiles) { profiles = r; renderProfiles(); }
+  else if (r?.error) out.textContent = r.error;
+  await refreshMap(); await refreshStatus();
+  return !!r?.profiles;
+}
+$('sel-profile').onchange = async (e) => {
+  const unsaved = !$('dirty').classList.contains('hidden');
+  if (unsaved && !confirm('Switch profile and drop the unsaved changes?')) { e.target.value = profiles.active; return; }
+  await profileCmd('profile use ' + e.target.value);
+};
+$('btn-profile-save').onclick = async () => {
+  const n = +$('sel-slot').value, p = profiles.profiles[n - 1];
+  if (p.used && n !== profiles.active && !confirm(`Overwrite profile ${n}: ${p.name}?`)) return;
+  if (await profileCmd(`profile save ${n} ${$('in-profile-name').value}`.trim())) $('in-profile-name').value = '';
+};
+$('btn-profile-rename').onclick = async () => {
+  const name = $('in-profile-name').value.trim();
+  if (!name) { $('profile-result').textContent = 'Type the new name first.'; return; }
+  if (await profileCmd(`profile name ${$('sel-slot').value} ${name}`)) $('in-profile-name').value = '';
+};
+$('btn-profile-delete').onclick = async () => {
+  const n = +$('sel-slot').value, p = profiles.profiles[n - 1];
+  if (!p.used) { $('profile-result').textContent = 'That slot is already empty.'; return; }
+  if (confirm(`Delete profile ${n}: ${p.name}?`)) await profileCmd('profile delete ' + n);
+};
 $('btn-clear').onclick = () => { $('console').innerHTML = ''; };
 $('form-cmd').onsubmit = (e) => { e.preventDefault(); const v = $('in-cmd').value.trim(); if (v) { cmd(v); $('in-cmd').value = ''; } };
 
 // ---------------------------------------------------------------------------
-// Developer mode
+// Tabs: one file, four pages, chosen by the URL hash so they can be linked to.
 // ---------------------------------------------------------------------------
-function setDev(on, persist = true) {
-  document.body.classList.toggle('dev', on);
-  $('btn-dev').classList.toggle('on', on);
-  if (persist) { try { localStorage.setItem('elrs-sim-rx-dev', on ? '1' : '0'); } catch {} }
+const PAGES = { '#main': 'main', '#receiver-update': 'rxfw', '#firmware': 'fw', '#console': 'console' };
+function showPage() {
+  const page = PAGES[location.hash] || 'main';
+  document.body.dataset.page = page;
+  for (const a of document.querySelectorAll('#tabs a')) a.classList.toggle('on', a.dataset.page === page);
 }
-$('btn-dev').onclick = () => setDev(!document.body.classList.contains('dev'));
-(() => {
-  let on = location.search.includes('dev');
-  if (!on) { try { on = localStorage.getItem('elrs-sim-rx-dev') === '1'; } catch {} }
-  setDev(on, false);
-})();
+window.addEventListener('hashchange', showPage);
+showPage();
 
 // ---------------------------------------------------------------------------
 // Firmware update (PICOBOOT over WebUSB, see picoboot.js)
@@ -583,10 +990,11 @@ async function loadManifest() {
     if (!r.ok) throw new Error(r.status);
     fwManifest = await r.json();
     const sel = $('fw-select');
+    const fileOpt = sel.querySelector('option[value="file"]');
     for (const f of fwManifest.files) {
       const o = document.createElement('option');
-      o.value = f.path; o.textContent = `${f.name}  v${f.version}  ${f.commit}  ${f.built.replace('T', ' ').replace('Z', ' UTC')}`;
-      sel.insertBefore(o, sel.firstChild);
+      o.value = f.path; o.textContent = `${f.label || f.name}  v${f.version}  ${f.commit}  ${f.built.replace('T', ' ').replace('Z', ' UTC')}`;
+      sel.insertBefore(o, fileOpt);       // manifest order, ahead of "Choose a .uf2 file"
     }
     sel.value = fwManifest.files[0].path;
     await selectFirmware();
@@ -617,7 +1025,7 @@ async function selectFirmware() {
   $('btn-fw-download').disabled = false;
   if (!ok) { fwBytes = null; fwStatus('Checksum mismatch, refusing to flash this file.', 'dirty'); return; }
   try { PB.parseUf2(fwBytes); } catch (e) { fwBytes = null; fwStatus('Not a valid RP2040 UF2: ' + e.message, 'dirty'); return; }
-  fwStatus('Firmware ready. Step 1 when you want to update a device.');
+  fwStatus('Firmware ready. Click Update firmware when you want to update a device.');
 }
 
 $('fw-select').onchange = selectFirmware;
@@ -626,7 +1034,7 @@ $('fw-file').onchange = async (e) => {
   const file = e.target.files[0]; if (!file) return;
   fwBytes = new Uint8Array(await file.arrayBuffer());
   fwLabel = file.name;
-  try { const p = PB.parseUf2(fwBytes); $('fw-info').textContent = `${file.name}, ${fwBytes.length} bytes, ${p.blocks.length} blocks`; fwStatus('Firmware ready. Step 1 when you want to update a device.'); $('btn-fw-download').disabled = false; }
+  try { const p = PB.parseUf2(fwBytes); $('fw-info').textContent = `${file.name}, ${fwBytes.length} bytes, ${p.blocks.length} blocks`; fwStatus('Firmware ready. Click Update firmware when you want to update a device.'); $('btn-fw-download').disabled = false; }
   catch (err) { fwBytes = null; fwStatus('Not a valid RP2040 UF2: ' + err.message, 'dirty'); }
   $('fw-select').value = 'file';
 };
@@ -638,13 +1046,25 @@ $('btn-fw-download').onclick = () => {
   a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 };
 
+// Reboot a connected dongle into its bootloader. Returns false if nothing was connected.
+async function enterUpdateMode() {
+  fwMock = dev instanceof MockDevice;
+  if (!dev?.connected) return false;
+  const noDrive = $('cb-fw-nodrive').checked;      // older firmware ignores the argument and shows the drive
+  fwLog(`sending dfu${noDrive ? ' nodrive' : ''}, device will re-enumerate as RP2 Boot`);
+  await cmd(noDrive ? 'dfu nodrive' : 'dfu');
+  await dev.disconnect();
+  return true;
+}
+{
+  const cb = $('cb-fw-nodrive');
+  try { cb.checked = localStorage.getItem('elrs-sim-rx-nodrive') === '1'; } catch {}
+  cb.onchange = () => { try { localStorage.setItem('elrs-sim-rx-nodrive', cb.checked ? '1' : '0'); } catch {} };
+}
+
 $('btn-fw-step1').onclick = async () => {
   if (!fwBytes) { fwStatus('Pick a firmware first.', 'dirty'); return; }
-  fwMock = dev instanceof MockDevice;
-  if (dev?.connected) {
-    fwLog('sending dfu, device will re-enumerate as RP2 Boot');
-    await cmd('dfu');
-    await dev.disconnect();
+  if (await enterUpdateMode()) {
     fwStatus('Device is rebooting into update mode. Wait two seconds, then step 2.');
   } else {
     fwStatus('No device connected: hold BOOT on the board while plugging it in, then step 2.');
@@ -675,7 +1095,11 @@ $('btn-fw-step2').onclick = async () => {
     try { usbDev = await PB.requestBootselDevice(navigator.usb); }
     catch (e) { fwStatus('No device selected. If "RP2 Boot" was not listed, the board is not in update mode (or Windows needs the WinUSB driver, see below).', 'dirty'); return; }
   }
-  $('btn-fw-step2').disabled = true; $('btn-fw-step1').disabled = true;
+  await flashWith(usbDev);
+};
+
+async function flashWith(usbDev) {
+  $('btn-fw-step2').disabled = true; $('btn-fw-step1').disabled = true; $('btn-fw-auto').disabled = true;
   const pb = new PB.PicoBoot(usbDev, fwLog);
   try {
     fwStatus('Connecting to bootloader…');
@@ -692,8 +1116,47 @@ $('btn-fw-step2').onclick = async () => {
     fwLog('ERROR ' + e.message);
   } finally {
     await pb.close();
-    $('btn-fw-step1').disabled = false;
+    $('btn-fw-step1').disabled = false; $('btn-fw-auto').disabled = false;
     fwStep1Done = false;
+  }
+}
+
+// A bootloader this page has been given access to before shows up here without a picker.
+async function findBootsel(timeoutMs) {
+  if (!navigator.usb?.getDevices) return null;
+  const t0 = performance.now();
+  for (;;) {
+    const found = (await navigator.usb.getDevices()).find(d => d.vendorId === PB.BOOTSEL_FILTER.vendorId && d.productId === PB.BOOTSEL_FILTER.productId);
+    if (found) return found;
+    if (performance.now() - t0 >= timeoutMs) return null;
+    await new Promise(r => setTimeout(r, 300));
+  }
+}
+
+// One click: reboot the dongle into its bootloader, wait for it, flash. The browser only
+// lets a page open a USB device unprompted once the user has picked it before, so the very
+// first update falls back to the picker on step 2.
+$('btn-fw-auto').onclick = async () => {
+  if (!fwBytes) { fwStatus('Pick a firmware first.', 'dirty'); return; }
+  $('btn-fw-auto').disabled = true;
+  try {
+    if (dev instanceof MockDevice || fwMock) {
+      await enterUpdateMode();
+      fwLog('mock BOOTSEL device');
+      return await flashWith(new MockUsbDevice());
+    }
+    let usbDev = await findBootsel(0);           // already in update mode
+    if (!usbDev) {
+      if (await enterUpdateMode()) fwStatus('Rebooting the dongle into update mode…');
+      else fwStatus('No dongle connected here. Looking for one already in update mode…');
+      usbDev = await findBootsel(10000);
+    }
+    if (usbDev) return await flashWith(usbDev);
+    fwStep1Done = true;
+    $('btn-fw-step2').disabled = false;
+    fwStatus('The dongle should now be in update mode, but this page has not been given access to it yet. Click "2. Select device and flash" and choose "RP2 Boot". After this first time, Update firmware does it all in one click.', 'dirty');
+  } finally {
+    $('btn-fw-auto').disabled = false;
   }
 };
 
