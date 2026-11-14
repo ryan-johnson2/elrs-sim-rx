@@ -25,7 +25,8 @@ Flash `elrs_sim_rx.uf2` (hold BOOT, plug in, copy, or `tools/flash.sh`).
       the failsafe report, correct with no receiver.
 - [ ] Serial console answers: `screen /dev/ttyACM0` or any terminal, type `help`, `status`.
       `status` should show `rx_power: true`, `link: false`, `failsafe: true`, `led: "wifi"`
-      after a second or so (no frames at all = assumed WiFi/unresponsive).
+      after about 10 s (`led: "disconnected"` until then; no frames at all = assumed
+      WiFi/unresponsive).
 - [ ] `rxpower off` then `status`: `rx_power: false`, `led: "off"`. `rxpower on` restores.
 - [ ] Web page: connect, status populates, channels all 992 (centre), mapping table renders.
 - [ ] `dfu` (or the page's "Firmware update mode") drops the board into BOOTSEL and
@@ -37,8 +38,8 @@ Flash `elrs_sim_rx.uf2` (hold BOOT, plug in, copy, or `tools/flash.sh`).
 
 Wire per `docs/HBOM.md` schematic: 2N7000 on GP4 for the LED, button GP3 to GND.
 
-- [ ] LED follows `status` → `led`: with RX power on and no receiver it should be the fast
-      WiFi flicker; `rxpower off` makes it dark.
+- [ ] LED follows `status` → `led`: with RX power on and no receiver it should be the slow
+      blink for 10 s, then the fast WiFi flicker; `rxpower off` makes it dark.
 - [ ] Short press toggles RX power (watch `status` and the LED).
 - [ ] Long press (1.5 s): `status` shows `led: "binding"` (double blink) for up to 60 s.
       Nothing else can happen yet without a receiver.
@@ -82,6 +83,16 @@ Move the EP2 5V to the AO3401A drain; GP2 → 2N7000 → gate, 10 k pull-up.
 - [ ] Unbind the receiver (flash with no bind phrase, or `bind` from a different radio
       profile). `bind` on the console or long press: receiver LED double-blinks, radio's
       ELRS Lua "Bind" completes it, link comes up. Confirms the `bd` serial command works.
+- [ ] Model match: with Model Match on in the radio's ELRS Lua, `modelmatch <n>` using a
+      different number from the model's Receiver number: channels stop and `status` goes to
+      `link: false`, and `led: "wifi"` after 30 s of silence. `modelmatch <receiver number>`: link returns.
+      `modelmatch off` with Lua Model Match off: link stays. Power-cycle the RX and confirm
+      the setting persisted.
+- [ ] Receiver settings (receiver on ExpressLRS 4.0+): `rxinfo` returns the receiver's name,
+      version and field count; the page's **Load from receiver** lists the same settings as
+      the ELRS Lua "Other devices" entry. Change Tlm Power and confirm it in the Lua.
+      After `modelmatch <n>` the Model Id line follows. Check it still loads with the radio
+      off and with a model mismatch. On a 3.x receiver expect "no reply".
 - [ ] `bindcycle`: watch the receiver LED go through three boots and end in bind mode.
 - [ ] ExpressLRS Web Flasher, receiver target `HappyModel EP 2.4GHz RX`, method
       "Betaflight passthrough", choose the dongle's serial port, set a bind phrase, Flash.
@@ -105,6 +116,7 @@ Move the EP2 5V to the AO3401A drain; GP2 → 2N7000 → gate, 10 k pull-up.
 - RP2040-Zero clone flash chip compatibility with the default boot stage.
 - Whether the EP2 pad order on the batch received matches the HBOM assumption.
 - WebUSB picker behaviour on the desktop OS used (Linux udev / Windows WinUSB).
-- Whether `PASSTHROUGH_IDLE_MS` (10 s) is long enough for the flasher's pauses.
+- Whether the passthrough timeouts (10 s with the port closed, 60 s of host silence with it
+  open) suit the flasher's pauses.
 - Real current draw of the EP2 through the AO3401A, and whether the 10 µF + 100 nF is
   enough to avoid brownout on TX bursts.

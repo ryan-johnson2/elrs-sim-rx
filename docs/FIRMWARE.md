@@ -23,6 +23,20 @@ firmware/
     board.h          pin assignments and timing constants
 ```
 
+## Two builds
+
+`tools/build.sh` produces two UF2 files from the same sources (`ELRS_LITE` in `CMakeLists.txt`):
+
+| File | Hardware | Differences |
+|------|----------|-------------|
+| `elrs_sim_rx.uf2` (full) | Carrier or prototype with the receiver power switch, button and LED ring | Everything in this document |
+| `elrs_sim_rx_lite.uf2` (lite) | RP2040-Zero wired straight to the receiver: 5V, GND, GP0 to the receiver's RX pad, GP1 to its TX pad | The receiver is on whenever USB is. GP2, GP3 and GP4 are not used. `rxpower`, `rxboot` and `bindcycle` answer with an error, and the config page hides them |
+
+Both drive the module's onboard RGB LED (GP16, `src/status_led.c`) with the same on/off
+pattern as the ring, in dim white so the clone's colour order does not matter. On the lite
+build it is the only status light. `version` and `status` report `"variant":"full"` or
+`"lite"`.
+
 ## Main loop
 
 ```
@@ -104,6 +118,40 @@ report. Re-arms on the next good RC frame.
 - `bindcycle` instead does three power cycles under two seconds each, which trips the
   receiver's power-on counter. Fallback for receivers that ignore the serial command.
 - `rxbootloader` sends `'b' 'l'`, which reboots the RX into its ROM bootloader.
+- `modelmatch <0-63|off>` sends `EC 05 32 'm' 'm' <id> crc` (`FF` for off), handled in the
+  same `handleRaw`. The receiver stores the ID in its own config; the dongle keeps nothing.
+  Reading it back needs the receiver settings below. The ID must equal the radio model's Receiver number when Model
+  Match is on in the ExpressLRS Lua. The command is refused, not deferred, if the RX is off,
+  within 1.5 s of power-up, or in passthrough. The receiver drops the link briefly while it
+  saves.
+- On a model mismatch the receiver sends neither RC nor link statistics frames, so the
+  dongle sees silence: the ring shows "disconnected" and then, after 30 s, the WiFi pattern,
+  even though the radio is on and the receiver's own LED is triple-blinking. See
+  `LED-BEHAVIOUR.md` for the details and a possible fix.
+
+## Receiver settings (CRSF parameter protocol)
+
+`core/crsf_params.c` is a client for the CRSF device ping and parameter read/write frames,
+the protocol the ExpressLRS Lua script uses. It is hardware independent like the rest of
+`core/`: `crsf_params_on_frame()` takes complete frames from the CRSF parser,
+`crsf_params_poll()` returns the next frame to send, one request at a time. It reassembles
+chunked fields (a frame holds 56 bytes of field data), resends after 200 ms up to three
+times, ignores duplicate chunks, and `crsf_params_parse_field()` decodes the result.
+
+- Built in by default, about 4 KB of flash and 0.4 KB of RAM. `-DELRS_RX_PARAMS=OFF` at
+  CMake time leaves it out, and `rxinfo` / `rxparam` become unknown commands.
+- Requests go out with origin `C8` (flight controller) to `EC` (receiver). The receiver
+  routes its replies back to the port the request came from.
+- **Needs ExpressLRS 4.0 or newer on the receiver.** 3.x forwards these frames to the
+  transmitter instead of answering them, so every request times out ("no reply from
+  receiver"). `modelmatch`, `bind` and `rxbootloader` work on both.
+- A write is followed by a read of the same field, 150 ms later, so the reply shows what
+  the receiver now holds. Commands answer by themselves and are not re-read, since reading
+  a command resets it.
+- While a request is running the console reads no further input; its reply is the reply to
+  `rxinfo` / `rxparam`. Worst case is 600 ms per chunk.
+- Changing the receiver's `Protocol` away from CRSF makes it unreadable to the dongle. The
+  only way back is the receiver's own WiFi page.
 
 ## Console
 
@@ -121,14 +169,26 @@ axis <0-7> <ch> [invert]      assign a channel to an axis (ch 0 = centre)
 button <0-35> <ch> <low|mid|high|none>
 throttle <axis|none>          axis forced low on failsafe
 failsafe <20-250>             RC gap in ms
+profile                       {"active":n,"profiles":[{"n":1,"used":true,"name":..},..]} for all 16 slots
+profile use <1-16>            switch profile; unsaved changes are dropped; an empty slot starts from defaults
+profile save <1-16> [name]    save the current mapping to a slot and switch to it
+profile name <1-16> <name>    rename (letters, digits, space and - _ . + ( ) #, 15 characters)
+profile delete <1-16>         empty a slot, not the active one
 rxpower on|off|toggle         receiver power now
 rxboot on|off                 receiver power at plug-in
 bind | bindcycle | rxbootloader
-save | defaults | reboot | dfu
+modelmatch <0-63|off>         set the receiver's model-match ID
+rxinfo                        {"name":..,"sw":"4.0.1","fields":N,..} from the receiver
+rxparam <id>                  one receiver setting: type, name, value/options/text
+rxparam <id> <value> [1|2|4]  write it (value width in bytes, default 1), reply as for a read
+save | defaults | reboot
+dfu [nodrive]                 reboot into the UF2 bootloader. `nodrive` starts it with only its PICOBOOT
+                              interface, so no RPI-RP2 drive appears (for flashing over WebUSB)
 ```
 
-Mapping changes take effect immediately and are lost on reboot until `save`.
-`status` reports `config_dirty` so a UI can show an unsaved indicator.
+Mapping changes take effect immediately and are lost on reboot until `save`, which writes
+them to the active profile. `status` reports `config_dirty` so a UI can show an unsaved
+indicator, and `profile`, the active slot number.
 
 ## Betaflight CLI emulation and passthrough
 
@@ -149,17 +209,27 @@ ExpressLRS flasher expects (see `src/python/BFinitPassthrough.py` in the Express
 
 In bridge mode every byte from USB goes to the RX UART and back, HID sends the failsafe
 report, the LED shows the serial-update pattern, and the UART baud follows the host's
-line-coding changes so esptool can switch speeds. The bridge exits when the host closes
-the port or has been silent for 10 s.
+line-coding changes so esptool can switch speeds. The flasher closes and reopens
+the port between its steps, so a closed port does not end the bridge: it exits once the
+port has stayed closed for 10 s, or the host has held it open but sent nothing for 60 s.
 
 This is enough for the ExpressLRS Web Flasher's "Betaflight passthrough" method to flash
 the receiver and set its bind phrase through the dongle.
 
 ## Flash layout
 
-Config lives in the last 4 KB sector of the 2 MB flash. `config_t` carries a magic,
-version, size and CRC-32; anything invalid falls back to defaults at boot. Saving skips the
-erase if the stored block already matches.
+Settings live in the last 4 KB sector of the 2 MB flash as one `profile_store_t`
+(`core/profiles.c`, about 2.1 KB): 16 slots, each a `config_t` plus a name, and the number of
+the active slot. The store and each used slot carry a magic, version, size and CRC-32;
+anything invalid falls back to a single default profile at boot. Saving skips the erase if the
+stored block already matches.
+
+The main loop works on a copy of the active slot (`app.config`). Receiver power at plug-in is
+kept the same across profiles: switching carries the current value into the new slot.
+
+A sector written by firmware from before profiles (a bare `config_t`) is read as profile 1.
+Going back to that older firmware after saving loses the mapping, since it cannot read the
+new layout and starts from defaults.
 
 ## USB identity
 

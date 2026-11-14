@@ -36,6 +36,19 @@ This is a one-time step per PC. Same procedure picotool documents.
 If the picker shows nothing, Device Manager will show "RP2 Boot" with a warning icon
 under "Other devices": the driver is not bound yet.
 
+## The Explorer window that opens in update mode
+
+The bootloader's `RPI-RP2` drive makes Windows AutoPlay open an Explorer window each time the
+board enters update mode. Two ways to stop that:
+
+- **Windows setting:** Settings > Bluetooth & devices > AutoPlay, set "Removable drive" to
+  "Take no action". Works with every flashing method.
+- **Firmware panel option:** "Do not show the RPI-RP2 drive while updating" starts the
+  bootloader without its drive. Only the WebUSB route works in that mode. Untested so far:
+  with the drive gone the bootloader is no longer a two-interface device, so Windows may not
+  apply the WinUSB driver that Zadig bound to "RP2 Boot (Interface 1)", and Zadig may have to
+  be run once more for it. If the page cannot find the board, replug it; it starts normally.
+
 ## Flashing without any driver
 
 Download the UF2 from the Firmware panel, hold BOOT while plugging in, and copy the file

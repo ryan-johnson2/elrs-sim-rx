@@ -8,7 +8,7 @@ ELRS receiver to USB HID gamepad adapter for FPV simulators.
 |-------|------|-------|--------|
 | 1a | Prove the firmware: HID, CRSF, failsafe, RX power toggle, bind, passthrough, LED mirroring | Breadboard | parts ordered |
 | 1b | First usable units in a 3D printed case, same parts moved to perfboard | Perfboard | after 1a |
-| 2 | Custom carrier PCB with SMD load switch, integrated button and pads | KiCad, 2-layer | far future, after every feature is proven |
+| 2 | Custom carrier PCB with SMD load switch, module soldered in and receiver pads | KiCad, 2-layer | v0.2 in `hardware/carrier/`, 5 boards ordered 2026-11-14 |
 
 Every Phase 1 part is chosen so it moves from breadboard to perfboard without substitution.
 Phase 2 swaps the discrete power switch for an integrated load switch and nothing else changes electrically.
@@ -67,25 +67,25 @@ RX TX  ── GP1          RX RX ── GP0
 FILN switch: one contact GP3, other GND
 ```
 
-## Phase 2: carrier board (far future)
+## Phase 2: carrier board (draft in `hardware/carrier/`)
 
 Only the differences from Phase 1 are listed. Everything else carries over.
 
 | # | Item | Replaces | Notes |
 |---|------|----------|-------|
-| 20 | Integrated load switch TPS22918 or AP22802, SOT-23-6 | AO3401A + 2N7000 + 10 kΩ | Logic-level EN with internal pull-down, controlled slew. GP2 drives EN directly. |
-| 21 | BSS138, SOT-23 | 2N7000 LED driver | Same circuit, SMD. |
+| 20 | Integrated load switch TPS22918, SOT-23-6 | AO3401A + 2N7000 + 10 kΩ | Logic-level ON, controlled slew, quick output discharge. GP2 drives ON directly, with a 100 kΩ pull-down so the RX stays off until firmware runs. |
+| 21 | 2N7002, SOT-23 | 2N7000 LED driver | Same circuit, SMD. |
 | 22 | 0603 passives | kit passives | |
-| 23 | RX landing: 4 labelled pads or JST-SH 4-pin | hand wiring | Pads preferred; RX pad order varies by vendor. |
-| 24 | RP2040-Zero soldered flat on castellations (buy a header-less batch for this), or bare RP2040 | header-mounted module | Decide after Phase 1b. The pre-soldered Phase 1 boards cannot be flat-mounted. |
-| 25 | 2-layer PCB, approx 22 x 30 mm, KiCad | perfboard | JLCPCB or similar, 5 minimum. |
+| 23 | RX landing: 4 SMD pads matching the EP2 castellated edge | hand wiring | RX soldered flat, castellations onto pads, RX5808 style. Footprint is receiver-specific. |
+| 24 | Two 1x9 and one 1x5 female sockets, 2.54 mm, 8.5 mm tall | perfboard mounting | Primary option: the same pre-soldered RP2040-Zero plugs in (headers on both sides and on the end opposite USB). The SMD parts sit under the module. Flat castellated mounting or a bare RP2040 stay as possible later variants. |
+| 25 | 2-layer PCB, 22 x 39.1 mm, KiCad | perfboard | JLCPCB or similar, 5 minimum. Fab assembles the SMD parts (top side only); sockets, RX and button leads are hand-soldered. |
 | 26 | SWD pads | none | Only if debugging without USB. |
 
 ## Open decisions
 
 - Quantity of EP2 receivers (item 2). Two is the useful minimum.
 - Flash chip per RP2040-Zero clone, logged from `picotool info -a` on arrival.
-- Phase 2 only: module on carrier versus bare RP2040.
+- Phase 2: items listed under "Check before ordering" in `hardware/carrier/README.md`.
 
 ## Change log
 
@@ -95,3 +95,5 @@ Only the differences from Phase 1 are listed. Everything else carries over.
 - 2026-11-09: RX power switch changed from Pololu 2808 to AO3401A on SOT-23 adapter, driven by 2N7000.
 - 2026-11-09: Restructured around Phase 1a breadboard, 1b perfboard in case, 2 carrier board. Added pin plan and text schematic. Removed TPS22918-on-adapter test option as redundant.
 - 2026-11-09: DWEII boards arrive with headers pre-soldered; perfboard mounting is through-hole or socketed, not castellated.
+- 2026-11-10: Phase 2 carrier drafted in KiCad (`hardware/carrier/`). Primary option is the socketed pre-soldered RP2040-Zero with the RX soldered on and fab-assembled SMD. Load switch fixed as TPS22918, LED driver as 2N7002.
+- 2026-11-14: Carrier v0.2 ordered from JLCPCB, 5 boards assembled (top side, 9 parts each). Actual cost: boards $4, assembly including parts about $53 (Standard PCBA tier), shipping $27, import duties about $36, total $120, so $24 per assembled board. Per finished unit with receiver, module, button and case: roughly $47. For a production run, revisit the assembly tier, shipping method and order quantity first.

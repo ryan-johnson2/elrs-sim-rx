@@ -11,3 +11,10 @@ node_modules/
 tests/web/shots/
 tests/web/.cache/
 tools/.certs/
+# generated: renders, fabrication files, STLs, autorouter files
+hardware/*/out/
+# generated from docs/wiring.html, see the comment at the top of that file
+docs/WIRING.pdf
+*.kicad_prl
+*-backups/
+fp-info-cache

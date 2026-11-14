@@ -1,0 +1,448 @@
+<!doctype html>
+<!-- Source for docs/WIRING.pdf. Rebuild with headless Chromium:
+     chrome --headless --no-pdf-header-footer --print-to-pdf=docs/WIRING.pdf docs/wiring.html
+     Keep in step with docs/HBOM.md (pin plan, schematic) and firmware/src/board.h. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ELRS Sim RX wiring guide</title>
+<style>
+  @page { size: 11in 8.5in; margin: 0; }
+  :root {
+    --ink: #16191f; --muted: #5d6470; --rule: #d5d8de; --panel: #f4f3ef;
+    --v5: #d02a2a; --sw: #e07a00; --tx: #17853a; --rx: #1d5bd0; --sig: #6a5acd; --gnd: #16191f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; color: var(--ink);
+    font-family: "Inter", "Helvetica Neue", Helvetica, Arial, "Liberation Sans", "DejaVu Sans", sans-serif;
+    font-size: 12px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 11in; height: 8.5in; padding: 34px 44px 30px; position: relative;
+    page-break-after: always; overflow: hidden; display: flex; flex-direction: column; }
+  .page:last-child { page-break-after: auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-end;
+    border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 12px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { font-weight: 400; color: var(--muted); }
+  .meta { font-size: 10.5px; color: var(--muted); text-align: right; }
+  h2 { font-size: 13px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.07em; }
+  footer { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--rule);
+    display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted); }
+  code { font-family: "JetBrains Mono", "DejaVu Sans Mono", "Liberation Mono", Menlo, monospace; font-size: 0.93em; }
+
+  /* diagram */
+  svg text { font-family: inherit; fill: var(--ink); }
+  .w { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .v5 { stroke: var(--v5); } .sw { stroke: var(--sw); } .tx { stroke: var(--tx); }
+  .rx { stroke: var(--rx); } .sig { stroke: var(--sig); } .gnd { stroke: var(--gnd); }
+  .part { fill: var(--panel); stroke: var(--ink); stroke-width: 1.6; }
+  .res { fill: #fff; stroke: var(--ink); stroke-width: 1.6; }
+  .ref { font-weight: 700; font-size: 12px; }
+  .lbl { font-size: 11px; }
+  .small { font-size: 10px; fill: var(--muted) !important; }
+  .pin { font-size: 11px; font-weight: 600; }
+  .eyebrow { font-size: 9px; letter-spacing: 0.09em; fill: var(--muted) !important; font-weight: 700; }
+  .caption { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; font-size: 10.5px;
+    color: #2b303a; margin-top: 4px; }
+  .caption b { color: var(--ink); }
+
+  /* tables */
+  table { border-collapse: collapse; width: 100%; }
+  th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); border-bottom: 1.5px solid var(--ink); padding: 0 8px 4px 0; }
+  td { padding: 4.5px 8px 4.5px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  td.ref { white-space: nowrap; font-weight: 700; }
+  td.n { color: var(--muted); font-variant-numeric: tabular-nums; width: 20px; }
+  td.box { width: 20px; }
+  td.box i { display: block; width: 11px; height: 11px; border: 1.4px solid var(--ink); border-radius: 2px; margin-top: 2px; }
+  tr.group td { border-bottom: none; padding: 9px 0 2px; font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+  .chip { display: inline-block; width: 22px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .cols { display: grid; gap: 30px; flex: 1; min-height: 0; }
+  .fig { border: 1px solid var(--rule); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+  .fig h3 { font-size: 11.5px; margin: 0 0 2px; }
+  .fig p { margin: 4px 0 0; font-size: 10.5px; color: #2b303a; }
+  .figrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  ol, ul { margin: 0; padding-left: 18px; }
+  li { margin-bottom: 5px; }
+  .note { background: var(--panel); border-left: 3px solid var(--ink); padding: 8px 12px; border-radius: 0 4px 4px 0; margin-bottom: 12px; }
+  .note.warn { border-left-color: var(--v5); }
+  .note h3 { margin: 0 0 4px; font-size: 11.5px; }
+</style>
+</head>
+<body>
+
+<!-- ============================ PAGE 1: DIAGRAM ============================ -->
+<section class="page">
+  <header>
+    <h1>ELRS Sim RX <span>wiring guide</span></h1>
+    <div class="meta">Phase 1 breadboard / perfboard build<br>Matches <code>docs/HBOM.md</code> and <code>firmware/src/board.h</code> as of 2026-11-09</div>
+  </header>
+
+  <svg viewBox="0 0 1000 606" width="100%" role="img" aria-label="Wiring diagram">
+    <defs>
+      <g id="gnd">
+        <line x1="0" y1="0" x2="0" y2="8" class="w gnd"/>
+        <line x1="-10" y1="8" x2="10" y2="8" class="w gnd"/>
+        <line x1="-6" y1="12.5" x2="6" y2="12.5" class="w gnd"/>
+        <line x1="-2.5" y1="17" x2="2.5" y2="17" class="w gnd"/>
+      </g>
+    </defs>
+
+    <!-- ---------- wires (drawn first, parts sit on top) ---------- -->
+    <!-- UART -->
+    <path class="w tx" d="M170,90 H820"/>
+    <polygon points="813,90 800,84.5 800,95.5" fill="var(--tx)"/>
+    <path class="w rx" d="M170,125 H820"/>
+    <polygon points="177,125 190,119.5 190,130.5" fill="var(--rx)"/>
+
+    <!-- GP2 -> R2 -> Q2 gate, R3 pull-down -->
+    <path class="w sig" d="M170,200 H375"/>
+    <path class="w sig" d="M300,200 V222"/>
+    <path class="w gnd" d="M300,263 V285"/>
+    <!-- Q2 source -> GND -->
+    <path class="w gnd" d="M415,230 V285"/>
+    <!-- Q2 drain -> Q1 gate, R1 pull-up to rail -->
+    <path class="w sig" d="M455,200 H560"/>
+    <path class="w sig" d="M505,200 V254"/>
+    <path class="w v5" d="M505,295 V350"/>
+    <!-- Q1 source -> rail -->
+    <path class="w v5" d="M605,230 V350"/>
+    <!-- Q1 drain -> receiver 5V, caps -->
+    <path class="w sw" d="M650,200 H820"/>
+    <path class="w sw" d="M715,200 V229"/>
+    <path class="w sw" d="M778,200 V229"/>
+    <path class="w gnd" d="M715,237 V270 H805 V235 H820"/>
+    <path class="w gnd" d="M778,237 V270"/>
+
+    <!-- 5 V rail -->
+    <path class="w v5" style="stroke-width:3.6" d="M170,350 H640"/>
+    <path class="w v5" d="M640,350 V395"/>
+
+    <!-- GP3 button -->
+    <path class="w sig" d="M170,420 H240"/>
+    <path class="w gnd" d="M280,420 H345 V440"/>
+
+    <!-- GP4 -> R4 -> Q3 gate, R5 pull-down -->
+    <path class="w sig" d="M170,500 H375"/>
+    <path class="w sig" d="M300,500 V516"/>
+    <path class="w gnd" d="M300,557 V572"/>
+    <path class="w gnd" d="M415,530 V572"/>
+    <!-- LED- -> Q3 drain -->
+    <path class="w sig" d="M640,455 V500 H455"/>
+
+    <!-- MCU ground -->
+    <path class="w gnd" d="M100,560 V574"/>
+
+    <!-- ground symbols -->
+    <use href="#gnd" x="300" y="285"/>
+    <use href="#gnd" x="415" y="285"/>
+    <use href="#gnd" x="746" y="270"/>
+    <use href="#gnd" x="345" y="440"/>
+    <use href="#gnd" x="300" y="572"/>
+    <use href="#gnd" x="415" y="572"/>
+    <use href="#gnd" x="100" y="574"/>
+
+    <!-- junction dots -->
+    <g fill="var(--sig)"><circle cx="300" cy="200" r="4"/><circle cx="505" cy="200" r="4"/><circle cx="300" cy="500" r="4"/></g>
+    <g fill="var(--v5)"><circle cx="505" cy="350" r="4.4"/><circle cx="605" cy="350" r="4.4"/></g>
+    <g fill="var(--sw)"><circle cx="715" cy="200" r="4"/><circle cx="778" cy="200" r="4"/></g>
+    <g fill="var(--gnd)"><circle cx="746" cy="270" r="3.6"/><circle cx="778" cy="270" r="3.6"/></g>
+
+    <!-- ---------- U1 ---------- -->
+    <rect class="part" x="30" y="55" width="140" height="505" rx="6"/>
+    <rect x="12" y="285" width="20" height="46" rx="5" fill="#9097a3" stroke="var(--ink)" stroke-width="1.6"/>
+    <text x="42" y="305" class="lbl">USB-C</text>
+    <text x="42" y="319" class="small">to the PC</text>
+    <text x="30" y="44"><tspan class="ref">U1</tspan><tspan class="lbl" dx="6">RP2040-Zero</tspan></text>
+    <g class="pin" text-anchor="end">
+      <text x="160" y="94">GP0</text>
+      <text x="160" y="129">GP1</text>
+      <text x="160" y="204">GP2</text>
+      <text x="160" y="354">5V</text>
+      <text x="160" y="424">GP3</text>
+      <text x="160" y="504">GP4</text>
+    </g>
+    <text x="100" y="550" class="pin" text-anchor="middle">GND</text>
+
+    <!-- ---------- U2 ---------- -->
+    <rect class="part" x="820" y="55" width="150" height="210" rx="6"/>
+    <text x="820" y="44"><tspan class="ref">U2</tspan><tspan class="lbl" dx="6">EP2 receiver</tspan></text>
+    <g class="pin">
+      <text x="831" y="94">RX</text>
+      <text x="831" y="129">TX</text>
+      <text x="831" y="204">5V</text>
+      <text x="831" y="239">GND</text>
+    </g>
+    <text x="895" y="150" class="small" text-anchor="middle">pad names as</text>
+    <text x="895" y="163" class="small" text-anchor="middle">printed on the</text>
+    <text x="895" y="176" class="small" text-anchor="middle">receiver</text>
+
+    <!-- UART labels -->
+    <text x="190" y="72" class="eyebrow">SERIAL LINK · CRSF · 420 000 BAUD</text>
+    <text x="520" y="82" class="lbl" text-anchor="middle">GP0 (UART0 TX) → receiver pad RX</text>
+    <text x="520" y="117" class="lbl" text-anchor="middle">GP1 (UART0 RX) ← receiver pad TX</text>
+
+    <!-- ---------- receiver power switch ---------- -->
+    <text x="190" y="162" class="eyebrow">RECEIVER POWER SWITCH</text>
+    <rect class="res" x="215" y="192" width="50" height="16" rx="2"/>
+    <text x="240" y="185" class="lbl" text-anchor="middle"><tspan class="ref">R2</tspan> 100 Ω</text>
+    <rect class="res" x="292" y="222" width="16" height="41" rx="2"/>
+    <text x="315" y="240" class="ref">R3</text>
+    <text x="315" y="253" class="lbl">100 kΩ</text>
+
+    <rect class="part" x="375" y="170" width="80" height="60" rx="5"/>
+    <text x="375" y="162"><tspan class="ref">Q2</tspan><tspan class="lbl" dx="6">2N7000</tspan></text>
+    <text x="383" y="204" class="pin">G</text>
+    <text x="447" y="204" class="pin" text-anchor="end">D</text>
+    <text x="415" y="224" class="pin" text-anchor="middle">S</text>
+
+    <rect class="res" x="497" y="254" width="16" height="41" rx="2"/>
+    <text x="520" y="272" class="ref">R1</text>
+    <text x="520" y="285" class="lbl">10 kΩ</text>
+
+    <rect class="part" x="560" y="170" width="90" height="60" rx="5"/>
+    <text x="560" y="162"><tspan class="ref">Q1</tspan><tspan class="lbl" dx="6">AO3401A (P-channel)</tspan></text>
+    <text x="568" y="204" class="pin">G</text>
+    <text x="642" y="204" class="pin" text-anchor="end">D</text>
+    <text x="605" y="224" class="pin" text-anchor="middle">S</text>
+
+    <text x="746" y="191" class="lbl" text-anchor="middle" style="fill:#a85a00">5 V switched</text>
+    <!-- caps -->
+    <g stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round">
+      <line x1="704" y1="229" x2="726" y2="229"/><line x1="704" y1="237" x2="726" y2="237"/>
+      <line x1="767" y1="229" x2="789" y2="229"/><line x1="767" y1="237" x2="789" y2="237"/>
+    </g>
+    <text x="698" y="222" class="pin" text-anchor="end">+</text>
+    <text x="698" y="250" class="ref" text-anchor="end">C1</text>
+    <text x="698" y="263" class="lbl" text-anchor="end">10 µF</text>
+    <text x="796" y="222" class="ref">C2</text>
+    <text x="760" y="258" class="lbl" text-anchor="end">100 nF</text>
+
+    <!-- rail label -->
+    <text x="190" y="341" class="lbl" style="fill:#a31d1d;font-weight:600">5 V from USB</text>
+
+    <!-- ---------- button + LED ---------- -->
+    <text x="190" y="392" class="eyebrow">FRONT-PANEL BUTTON AND LED RING (ONE PART, SW1)</text>
+    <g stroke="var(--ink)" stroke-width="2.2" fill="#fff" stroke-linecap="round">
+      <line x1="236" y1="409" x2="284" y2="409"/><line x1="260" y1="409" x2="260" y2="400"/>
+      <circle cx="240" cy="420" r="3.6"/><circle cx="280" cy="420" r="3.6"/>
+    </g>
+    <text x="260" y="442" text-anchor="middle"><tspan class="ref">SW1</tspan><tspan class="lbl" dx="5">switch</tspan></text>
+
+    <rect class="res" x="215" y="492" width="50" height="16" rx="2"/>
+    <text x="240" y="485" class="lbl" text-anchor="middle"><tspan class="ref">R4</tspan> 100 Ω</text>
+    <rect class="res" x="292" y="516" width="16" height="41" rx="2"/>
+    <text x="315" y="534" class="ref">R5</text>
+    <text x="315" y="547" class="lbl">100 kΩ</text>
+
+    <rect class="part" x="375" y="470" width="80" height="60" rx="5"/>
+    <text x="375" y="462"><tspan class="ref">Q3</tspan><tspan class="lbl" dx="6">2N7000</tspan></text>
+    <text x="383" y="504" class="pin">G</text>
+    <text x="447" y="504" class="pin" text-anchor="end">D</text>
+    <text x="415" y="524" class="pin" text-anchor="middle">S</text>
+
+    <rect class="part" x="590" y="395" width="100" height="60" rx="30"/>
+    <text x="652" y="411" class="pin">+</text>
+    <text x="652" y="450" class="pin">−</text>
+    <text x="640" y="430" class="lbl" text-anchor="middle">LED ring</text>
+    <text x="702" y="420"><tspan class="ref">SW1</tspan><tspan class="lbl" dx="5">ring LED</tspan></text>
+    <text x="702" y="434" class="small">resistor built in, fine on 5 V</text>
+
+    <!-- ---------- key ---------- -->
+    <g transform="translate(722,474)">
+      <rect x="-14" y="-18" width="262" height="146" rx="6" fill="#fff" stroke="var(--rule)"/>
+      <text x="0" y="0" class="eyebrow">WIRE KEY</text>
+      <line x1="0" y1="18" x2="34" y2="18" class="w v5"/><text x="44" y="22" class="lbl">5 V from USB (always on)</text>
+      <line x1="0" y1="37" x2="34" y2="37" class="w sw"/><text x="44" y="41" class="lbl">5 V switched, receiver only</text>
+      <line x1="0" y1="56" x2="34" y2="56" class="w tx"/><text x="44" y="60" class="lbl">GP0 to receiver RX</text>
+      <line x1="0" y1="75" x2="34" y2="75" class="w rx"/><text x="44" y="79" class="lbl">receiver TX to GP1</text>
+      <line x1="0" y1="94" x2="34" y2="94" class="w sig"/><text x="44" y="98" class="lbl">control signals</text>
+      <use href="#gnd" x="17" y="102"/><text x="44" y="117" class="lbl">ground: all join U1 GND</text>
+    </g>
+  </svg>
+
+  <div class="caption">
+    <div><b>Crossed serial.</b> The receiver's TX pad goes to GP1 and its RX pad goes to GP0. If no frames arrive, these two are the first thing to swap.</div>
+    <div><b>Receiver is off by default.</b> R1 holds Q1 off until the firmware drives GP2 high, so the EP2 only powers up when asked.</div>
+    <div><b>Every ground symbol is one net.</b> On a breadboard, run U1 GND to the − rail and U1 5V to the + rail, then land each ground and 5 V connection there.</div>
+  </div>
+
+  <footer><span>ELRS Sim RX · wiring guide</span><span>1 / 3 · Wiring diagram</span></footer>
+</section>
+
+<!-- ============================ PAGE 2: COMPONENTS ============================ -->
+<section class="page">
+  <header>
+    <h1>Components <span>and pinouts</span></h1>
+    <div class="meta">Quantities are per dongle</div>
+  </header>
+
+  <div class="cols" style="grid-template-columns: 1.08fr 1fr;">
+    <div>
+      <table>
+        <tr><th>Ref</th><th>Part</th><th>Qty</th><th>What it does</th></tr>
+        <tr><td class="ref">U1</td><td>RP2040-Zero (DWEII clone, headers fitted)</td><td>1</td><td>Shows up on the PC as a USB gamepad and serial port; reads CRSF from the receiver</td></tr>
+        <tr><td class="ref">U2</td><td>Happymodel EP2 ELRS receiver</td><td>1</td><td>2.4 GHz receiver; sends stick data out of its TX pad</td></tr>
+        <tr><td class="ref">SW1</td><td>FILN 12 mm momentary button with green LED ring</td><td>1</td><td>Short press toggles receiver power, long press binds. The ring mirrors the receiver's status LED</td></tr>
+        <tr><td class="ref">Q1</td><td>AO3401A P-channel MOSFET on a SOT-23 to DIP adapter</td><td>1</td><td>Switches the receiver's 5 V supply</td></tr>
+        <tr><td class="ref">Q2</td><td>2N7000 N-channel MOSFET (TO-92)</td><td>1</td><td>Lets 3.3 V GP2 pull Q1's gate low to turn the receiver on</td></tr>
+        <tr><td class="ref">Q3</td><td>2N7000 N-channel MOSFET (TO-92)</td><td>1</td><td>Switches the LED ring from GP4</td></tr>
+        <tr><td class="ref">R1</td><td>10 kΩ resistor</td><td>1</td><td>Pulls Q1's gate up to 5 V so the receiver stays off at power-up</td></tr>
+        <tr><td class="ref">R2, R4</td><td>100 Ω resistor</td><td>2</td><td>In series with each 2N7000 gate</td></tr>
+        <tr><td class="ref">R3, R5</td><td>100 kΩ resistor</td><td>2</td><td>Gate to ground: keeps Q2 and Q3 off while the RP2040 boots</td></tr>
+        <tr><td class="ref">C1</td><td>10 µF capacitor, 6.3 V or higher</td><td>1</td><td>Holds the receiver's supply steady; fit close to the receiver</td></tr>
+        <tr><td class="ref">C2</td><td>100 nF ceramic capacitor</td><td>1</td><td>High-frequency decoupling, also close to the receiver</td></tr>
+        <tr><td class="ref">—</td><td>Breadboard, jumper wires, USB-C data cable</td><td></td><td>Do not fit the kit's MB102 power module; everything runs from USB 5 V</td></tr>
+      </table>
+
+      <div class="note" style="margin-top:14px">
+        <h3>Suggested wire colours</h3>
+        <span class="chip" style="background:var(--v5)"></span>red 5 V &nbsp;&nbsp;
+        <span class="chip" style="background:var(--sw)"></span>orange switched 5 V &nbsp;&nbsp;
+        <span class="chip" style="background:var(--gnd)"></span>black ground &nbsp;&nbsp;
+        <span class="chip" style="background:var(--tx)"></span>green GP0 &nbsp;&nbsp;
+        <span class="chip" style="background:var(--rx)"></span>blue GP1
+      </div>
+    </div>
+
+    <div>
+      <div class="fig">
+        <h3>U1 · RP2040-Zero, top view, USB-C up</h3>
+        <svg viewBox="0 0 470 216" width="100%" height="190">
+          <rect x="163" y="14" width="144" height="194" rx="8" class="part"/>
+          <rect x="203" y="6" width="64" height="38" rx="6" fill="#9097a3" stroke="var(--ink)" stroke-width="1.6"/>
+          <text x="235" y="120" class="small" text-anchor="middle">RP2040</text>
+          <rect x="207" y="84" width="56" height="56" rx="3" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+          <!-- left pins -->
+          <g font-size="10.5" text-anchor="end">
+            <circle cx="173" cy="28" r="5.5" fill="var(--v5)"/><text x="155" y="32" font-weight="700">5V</text><text x="128" y="32" class="small">5 V rail</text>
+            <circle cx="173" cy="49" r="5.5" fill="var(--gnd)"/><text x="155" y="53" font-weight="700">GND</text><text x="124" y="53" class="small">ground rail</text>
+            <g fill="#c3c7cf"><circle cx="173" cy="70" r="4.5"/><circle cx="173" cy="91" r="4.5"/><circle cx="173" cy="112" r="4.5"/><circle cx="173" cy="133" r="4.5"/><circle cx="173" cy="154" r="4.5"/><circle cx="173" cy="175" r="4.5"/><circle cx="173" cy="196" r="4.5"/></g>
+            <g class="small"><text x="155" y="74">3V3</text><text x="155" y="95">GP29</text><text x="155" y="116">GP28</text><text x="155" y="137">GP27</text><text x="155" y="158">GP26</text><text x="155" y="179">GP15</text><text x="155" y="200">GP14</text></g>
+          </g>
+          <!-- right pins -->
+          <g font-size="10.5">
+            <circle cx="297" cy="28" r="5.5" fill="var(--tx)"/><text x="315" y="32" font-weight="700">GP0</text><text x="346" y="32" class="small">to receiver RX pad</text>
+            <circle cx="297" cy="49" r="5.5" fill="var(--rx)"/><text x="315" y="53" font-weight="700">GP1</text><text x="346" y="53" class="small">from receiver TX pad</text>
+            <circle cx="297" cy="70" r="5.5" fill="var(--sig)"/><text x="315" y="74" font-weight="700">GP2</text><text x="346" y="74" class="small">R2, then Q2 gate</text>
+            <circle cx="297" cy="91" r="5.5" fill="var(--sig)"/><text x="315" y="95" font-weight="700">GP3</text><text x="346" y="95" class="small">SW1 switch</text>
+            <circle cx="297" cy="112" r="5.5" fill="var(--sig)"/><text x="315" y="116" font-weight="700">GP4</text><text x="346" y="116" class="small">R4, then Q3 gate</text>
+            <g fill="#c3c7cf"><circle cx="297" cy="133" r="4.5"/><circle cx="297" cy="154" r="4.5"/><circle cx="297" cy="175" r="4.5"/><circle cx="297" cy="196" r="4.5"/></g>
+            <g class="small"><text x="315" y="137">GP5</text><text x="315" y="158">GP6</text><text x="315" y="179">GP7</text><text x="315" y="200">GP8</text></g>
+          </g>
+        </svg>
+        <p>All seven connections are the top two pins on the left and the top five on the right. Pin names are printed on the underside of the board; confirm against them. GP16 drives the onboard RGB LED and needs no wiring.</p>
+      </div>
+
+      <div class="figrow">
+        <div class="fig">
+          <h3>Q2, Q3 · 2N7000</h3>
+          <svg viewBox="0 0 200 132" width="100%" height="104">
+            <path d="M48,58 V30 a12,12 0 0 1 12,-12 h80 a12,12 0 0 1 12,12 V58 Z" class="part"/>
+            <text x="100" y="43" class="lbl" text-anchor="middle">2N7000</text>
+            <g stroke="#8a909b" stroke-width="4" stroke-linecap="round"><line x1="64" y1="60" x2="64" y2="100"/><line x1="100" y1="60" x2="100" y2="100"/><line x1="136" y1="60" x2="136" y2="100"/></g>
+            <g text-anchor="middle" class="pin"><text x="64" y="116">S</text><text x="100" y="116">G</text><text x="136" y="116">D</text></g>
+            <g text-anchor="middle" class="small"><text x="64" y="128">source</text><text x="100" y="128">gate</text><text x="136" y="128">drain</text></g>
+          </svg>
+          <p>Flat printed face toward you, legs down: source, gate, drain. A BS170 looks identical but is the other way round.</p>
+        </div>
+        <div class="fig">
+          <h3>Q1 · AO3401A (SOT-23)</h3>
+          <svg viewBox="0 0 200 132" width="100%" height="104">
+            <g fill="#8a909b"><rect x="64" y="78" width="16" height="18"/><rect x="120" y="78" width="16" height="18"/><rect x="92" y="24" width="16" height="18"/></g>
+            <rect x="52" y="40" width="96" height="40" rx="4" class="part"/>
+            <text x="100" y="65" class="lbl" text-anchor="middle">A19T</text>
+            <g text-anchor="middle" class="pin"><text x="72" y="110">1 · G</text><text x="128" y="110">2 · S</text><text x="100" y="18">3 · D</text></g>
+            <g text-anchor="middle" class="small"><text x="72" y="123">gate</text><text x="128" y="123">source</text><text x="140" y="18">drain</text></g>
+          </svg>
+          <p>Top view, marking readable. Two legs on one side are gate and source; the single leg opposite is drain.</p>
+        </div>
+      </div>
+      <div class="note warn">
+        <h3>Check on the real parts before wiring</h3>
+        <ul>
+          <li><b>EP2 pad order</b> varies by batch. Go by the labels printed next to the pads, not by position.</li>
+          <li><b>FILN lead colours</b> are not documented here. Find the switch pair with a continuity test (beeps only while pressed); the other pair is the LED, and it only lights one way round.</li>
+          <li><b>SOT-23 adapter numbering</b> differs between adapter boards. Follow the copper from each MOSFET leg to its header pin.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <footer><span>ELRS Sim RX · wiring guide</span><span>2 / 3 · Components and pinouts</span></footer>
+</section>
+
+<!-- ============================ PAGE 3: CONNECTIONS ============================ -->
+<section class="page">
+  <header>
+    <h1>Connections <span>checklist</span></h1>
+    <div class="meta">21 connections · tick each one as you make it</div>
+  </header>
+
+  <div class="cols" style="grid-template-columns: 1.3fr 1fr;">
+    <div>
+      <table>
+        <tr><th></th><th>#</th><th>From</th><th>To</th><th>Notes</th></tr>
+        <tr class="group"><td colspan="5">Power rails</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">1</td><td>U1 <b>5V</b></td><td>5 V rail</td><td><span class="chip" style="background:var(--v5)"></span>USB power for everything</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">2</td><td>U1 <b>GND</b></td><td>Ground rail</td><td><span class="chip" style="background:var(--gnd)"></span></td></tr>
+        <tr class="group"><td colspan="5">Button and LED ring</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">3</td><td>U1 <b>GP3</b></td><td>SW1 switch lead A</td><td>No resistor; firmware enables a pull-up</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">4</td><td>SW1 switch lead B</td><td>Ground rail</td><td></td></tr>
+        <tr><td class="box"><i></i></td><td class="n">5</td><td>U1 <b>GP4</b></td><td>R4 (100 Ω) → Q3 <b>gate</b></td><td>R4 in series</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">6</td><td>Q3 <b>gate</b></td><td>R5 (100 kΩ) → ground rail</td><td>Pull-down</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">7</td><td>Q3 <b>source</b></td><td>Ground rail</td><td></td></tr>
+        <tr><td class="box"><i></i></td><td class="n">8</td><td>Q3 <b>drain</b></td><td>SW1 LED <b>−</b></td><td></td></tr>
+        <tr><td class="box"><i></i></td><td class="n">9</td><td>SW1 LED <b>+</b></td><td>5 V rail</td><td>No extra resistor needed</td></tr>
+        <tr class="group"><td colspan="5">Receiver serial and ground</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">10</td><td>U1 <b>GP0</b></td><td>U2 pad <b>RX</b></td><td><span class="chip" style="background:var(--tx)"></span>Dongle to receiver</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">11</td><td>U1 <b>GP1</b></td><td>U2 pad <b>TX</b></td><td><span class="chip" style="background:var(--rx)"></span>Receiver to dongle</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">12</td><td>U2 pad <b>GND</b></td><td>Ground rail</td><td><span class="chip" style="background:var(--gnd)"></span></td></tr>
+        <tr><td class="box"><i></i></td><td class="n">13</td><td>C1 (10 µF) <b>+</b></td><td>U2 pad <b>5V</b>; C1 <b>−</b> to ground</td><td>Electrolytic: stripe side is −</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">14</td><td>C2 (100 nF)</td><td>U2 pad <b>5V</b> to ground</td><td>Either way round</td></tr>
+        <tr class="group"><td colspan="5">Receiver power switch</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">15</td><td>Q1 <b>source</b></td><td>5 V rail</td><td><span class="chip" style="background:var(--v5)"></span></td></tr>
+        <tr><td class="box"><i></i></td><td class="n">16</td><td>Q1 <b>gate</b></td><td>R1 (10 kΩ) → 5 V rail</td><td>Pull-up: receiver off by default</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">17</td><td>Q1 <b>gate</b></td><td>Q2 <b>drain</b></td><td></td></tr>
+        <tr><td class="box"><i></i></td><td class="n">18</td><td>Q2 <b>source</b></td><td>Ground rail</td><td></td></tr>
+        <tr><td class="box"><i></i></td><td class="n">19</td><td>U1 <b>GP2</b></td><td>R2 (100 Ω) → Q2 <b>gate</b></td><td>R2 in series</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">20</td><td>Q2 <b>gate</b></td><td>R3 (100 kΩ) → ground rail</td><td>Pull-down</td></tr>
+        <tr><td class="box"><i></i></td><td class="n">21</td><td>Q1 <b>drain</b></td><td>U2 pad <b>5V</b></td><td><span class="chip" style="background:var(--sw)"></span>Switched supply</td></tr>
+      </table>
+    </div>
+
+    <div>
+      <h2>Build it in stages</h2>
+      <p style="margin:0 0 8px;color:#2b303a">The table is ordered to match <code>docs/BRINGUP.md</code>. Test after each stage so a fault can only be in what you just added.</p>
+      <ol style="margin-bottom:14px">
+        <li><b>RP2040-Zero alone</b> (1, 2). Flash the firmware; check it appears as a gamepad and a serial port.</li>
+        <li><b>Button and LED ring</b> (3 to 9). The ring should follow the <code>led</code> field in <code>status</code>; a short press toggles receiver power.</li>
+        <li><b>Receiver, powered directly</b> (10 to 14). For this stage only, run the receiver's 5V pad straight to the 5 V rail. Confirm frames arrive and sticks move.</li>
+        <li><b>Power switch</b> (15 to 21). Move the receiver's 5V pad from the rail to Q1 drain. <code>rxpower off</code> should drop the pad to about 0 V.</li>
+      </ol>
+
+      <div class="note warn">
+        <h3>Before plugging in USB</h3>
+        <ul>
+          <li>Multimeter on continuity: 5 V rail to ground rail must <b>not</b> beep.</li>
+          <li>C1 stripe (−) is on the ground side.</li>
+          <li>Q2 and Q3 face the way the pinout on page 2 shows.</li>
+          <li>The receiver is not resting on bare metal; wrap it in heat shrink or tape.</li>
+        </ul>
+      </div>
+      <div class="note">
+        <h3>Do first, off the board</h3>
+        Update the EP2 over its WiFi hotspot and bind it to your radio from a plain 5 V supply, so you know the receiver works before the dongle is involved.
+      </div>
+      <div class="note">
+        <h3>If the LED ring is dim or dead</h3>
+        A 2N7000 only gets 3.3 V on its gate here, which is near the limit for some parts. Swap in another one from the pack before suspecting the wiring.
+      </div>
+    </div>
+  </div>
+
+  <footer><span>ELRS Sim RX · wiring guide</span><span>3 / 3 · Connections checklist</span></footer>
+</section>
+
+</body>
+</html>
