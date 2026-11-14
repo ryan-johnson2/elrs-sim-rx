@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # manifest records the commit
+          fetch-depth: 0   # the version is worked out from the tags and history
 
       - name: Cache toolchain image
         id: cache-image
@@ -88,6 +88,14 @@ jobs:
         with:
           name: firmware
           path: firmware/build
+      - name: Check the firmware carries the tag's version
+        run: |
+          built=$(jq -r '.files[0].version' firmware/build/manifest.json)
+          want="${GITHUB_REF_NAME#v}"
+          if [ "$built" != "$want" ]; then
+            echo "::error::firmware reports $built but the tag is $GITHUB_REF_NAME (tags must look like v1.2.3)"
+            exit 1
+          fi
       - name: Package the page
         run: tar czf web.tar.gz -C web .
       - uses: softprops/action-gh-release@v2

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the firmware in the container. Output: firmware/build/elrs_sim_rx.uf2 (full) and
 # firmware/build/elrs_sim_rx_lite.uf2 (no button, receiver wired direct)
+# The version comes from git, see tools/version.sh.
 # Usage: tools/build.sh [clean]
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -11,7 +12,9 @@ fi
 
 tools/docker-run.sh bash -c '
     set -e
-    cmake -S firmware -B firmware/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    version=$(tools/version.sh)
+    echo ">> firmware version $version"
+    cmake -S firmware -B firmware/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFW_VERSION="$version"
     cmake --build firmware/build
     python3 - <<PY
 import json, hashlib, os, subprocess, datetime, re
