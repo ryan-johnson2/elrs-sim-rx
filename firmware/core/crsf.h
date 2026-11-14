@@ -76,6 +76,13 @@ uint16_t crsf_channel_to_us(uint16_t ch);
 // returns length.
 size_t crsf_build_rx_command(uint8_t *out, char c0, char c1);
 
+// Build the raw "mm" frame that sets the receiver's model-match ID.
+// id 0-63 enables model match with that ID, CRSF_MODEL_ID_OFF disables it.
+// Writes to out (>= 7 bytes), returns length.
+#define CRSF_MODEL_ID_OFF  0xFF
+#define CRSF_MODEL_ID_MAX  63
+size_t crsf_build_rx_model_id(uint8_t *out, uint8_t id);
+
 // Build an RC channels frame from raw channel values (used by tests and by the
 // optional CRSF-out path). out must hold at least 26 bytes. Returns length.
 size_t crsf_build_rc_frame(uint8_t *out, const uint16_t ch[CRSF_NUM_CHANNELS]);

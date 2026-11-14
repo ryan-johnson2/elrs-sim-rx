@@ -20,6 +20,9 @@ static uint32_t cycle_step_start_ms;
 
 static void apply(bool on, uint32_t now_ms)
 {
+#if ELRS_LITE
+    if (!on) return;                 // no switch: the receiver is on whenever USB is
+#endif
     if (on) {
         gpio_put(PIN_RX_POWER, 1);
         rx_uart_enable(CRSF_BAUD);
@@ -39,6 +42,9 @@ void rx_power_init(bool on)
     rx_uart_init();
     powered = false;
     cycle_active = false;
+#if ELRS_LITE
+    on = true;
+#endif
     if (on) {
         apply(true, 0);
     }
@@ -64,6 +70,10 @@ uint32_t rx_power_on_since_ms(void)
 
 void rx_power_start_bind_cycle(uint32_t now_ms)
 {
+#if ELRS_LITE
+    (void)now_ms;                    // needs the power switch
+    return;
+#endif
     cycle_active = true;
     cycle_step = 0;
     cycle_step_start_ms = now_ms;

@@ -191,6 +191,30 @@ static void test_rx_command_frames_match_elrs_flasher(void)
     CHECK_EQ(feed_all(&c, f, n, 0), CRSF_TYPE_COMMAND);
 }
 
+static void test_build_rx_model_id(void)
+{
+    // ExpressLRS RXEndpoint::handleRaw: [0xEC, len>=4, 0x32, 'm', 'm', id] + crc,
+    // id 0-63 or 0xFF for model match off.
+    uint8_t f[8];
+    size_t n = crsf_build_rx_model_id(f, 7);
+    CHECK_EQ(n, 7);
+    CHECK_EQ(f[0], 0xEC);
+    CHECK_EQ(f[1], 0x05);
+    CHECK_EQ(f[2], 0x32);
+    CHECK_EQ(f[3], 'm');
+    CHECK_EQ(f[4], 'm');
+    CHECK_EQ(f[5], 7);
+    CHECK_EQ(f[6], crc8_dvb_s2(&f[2], 4));
+
+    n = crsf_build_rx_model_id(f, CRSF_MODEL_ID_OFF);
+    CHECK_EQ(f[5], 0xFF);
+    CHECK_EQ(f[6], crc8_dvb_s2(&f[2], 4));
+
+    crsf_t c;
+    crsf_init(&c);
+    CHECK_EQ(feed_all(&c, f, n, 0), CRSF_TYPE_COMMAND);
+}
+
 int main(void)
 {
     RUN(test_rc_frame_roundtrip);
@@ -203,5 +227,6 @@ int main(void)
     RUN(test_two_frames_back_to_back);
     RUN(test_channel_to_us);
     RUN(test_rx_command_frames_match_elrs_flasher);
+    RUN(test_build_rx_model_id);
     TEST_MAIN_END();
 }

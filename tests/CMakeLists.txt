@@ -8,7 +8,9 @@ set(CORE ${CMAKE_CURRENT_SOURCE_DIR}/../firmware/core)
 add_library(core STATIC
     ${CORE}/crc.c
     ${CORE}/crsf.c
+    ${CORE}/crsf_params.c
     ${CORE}/mapping.c
+    ${CORE}/profiles.c
     ${CORE}/failsafe.c
     ${CORE}/led_seq.c
     ${CORE}/button.c
@@ -26,7 +28,9 @@ endfunction()
 add_core_test(test_crc)
 add_core_test(test_crsf)
 add_core_test(test_mapping)
+add_core_test(test_profiles)
 add_core_test(test_failsafe)
 add_core_test(test_led_seq)
 add_core_test(test_button)
 add_core_test(test_crsf_fuzz)
+add_core_test(test_crsf_params)

@@ -13,6 +13,7 @@
 #include "tusb.h"
 
 #include "app.h"
+#include "status_led.h"
 #include "board.h"
 #include "cli.h"
 #include "rx_uart.h"
@@ -34,6 +35,27 @@ void app_send_rx_command(char c0, char c1)
     uint8_t frame[8];
     size_t n = crsf_build_rx_command(frame, c0, c1);
     rx_uart_write(frame, n);
+}
+
+bool app_rx_ready(uint32_t now_ms, const char **err)
+{
+    if (app.passthrough) { *err = "busy: passthrough active"; return false; }
+    if (!rx_power_is_on() || rx_power_bind_cycle_active()) { *err = "receiver is off"; return false; }
+    if ((uint32_t)(now_ms - rx_power_on_since_ms()) < BIND_AFTER_POWER_MS) {
+        *err = "receiver still booting, retry in a moment";
+        return false;
+    }
+    return true;
+}
+
+bool app_set_rx_model_id(uint8_t id, uint32_t now_ms, const char **err)
+{
+    // Not deferred like bind: the caller gets a definite answer instead.
+    if (!app_rx_ready(now_ms, err)) return false;
+    uint8_t frame[8];
+    size_t n = crsf_build_rx_model_id(frame, id);
+    rx_uart_write(frame, n);
+    return true;
 }
 
 void app_set_rx_power(bool on, uint32_t now_ms)
@@ -68,13 +90,12 @@ void app_request_bind_cycle(uint32_t now_ms)
     rx_power_start_bind_cycle(now_ms);
 }
 
-void app_save_config(void)
+// Write the profile store to flash.
+static bool persist_profiles(void)
 {
-    config_finalize(&app.config);
+    profiles_finalize(&app.profiles);
     uint32_t t0 = app_now_ms();
-    if (config_store_save(&app.config)) {
-        app.config_dirty = false;
-    }
+    bool ok = config_store_save(&app.profiles);
     // The erase/program cycle runs with interrupts off for tens of ms, so RC
     // bytes were lost and the parser may hold a partial frame. Drop the
     // leftovers and credit the stall to the link timestamps so the failsafe
@@ -85,12 +106,59 @@ void app_save_config(void)
     if (app.crsf.have_rc)   app.crsf.last_rc_ms    += stall;
     if (app.crsf.have_link) app.crsf.last_link_ms  += stall;
     app.crsf.last_frame_ms += stall;
+    return ok;
 }
 
-void app_reboot_to_bootsel(void)
+void app_save_config(void)
+{
+    profiles_put(&app.profiles, app.profiles.active, &app.config);
+    if (persist_profiles()) {
+        app.config_dirty = false;
+    }
+}
+
+bool app_profile_use(int n)
+{
+    if (n < 0 || n >= PROFILE_COUNT) return false;
+    // Receiver power at plug-in is one setting for the dongle, not one per profile: carry it over.
+    uint8_t rx_boot = app.config.rx_power_on_boot;
+    profiles_get(&app.profiles, n, &app.config);
+    app.config.rx_power_on_boot = rx_boot;
+    config_finalize(&app.config);
+    app.failsafe.timeout_ms = app.config.failsafe_ms;
+    profiles_put(&app.profiles, n, &app.config);     // also brings an empty slot into use
+    app.profiles.active = (uint8_t)n;
+    bool ok = persist_profiles();
+    app.config_dirty = !ok;
+    return ok;
+}
+
+bool app_profile_save_as(int n, const char *name)
+{
+    if (n < 0 || n >= PROFILE_COUNT) return false;
+    profiles_put(&app.profiles, n, &app.config);
+    if (name && *name) profiles_rename(&app.profiles, n, name);
+    app.profiles.active = (uint8_t)n;
+    bool ok = persist_profiles();
+    if (ok) app.config_dirty = false;
+    return ok;
+}
+
+bool app_profile_rename(int n, const char *name)
+{
+    return profiles_rename(&app.profiles, n, name) && persist_profiles();
+}
+
+bool app_profile_delete(int n)
+{
+    return profiles_clear(&app.profiles, n) && persist_profiles();
+}
+
+void app_reboot_to_bootsel(bool no_drive)
 {
     rx_power_set(false, app_now_ms());
-    reset_usb_boot(0, 0);
+    // Second argument is the boot ROM's disable-interface mask: 1 = no mass storage drive.
+    reset_usb_boot(0, no_drive ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +244,9 @@ static void update_led(uint32_t now_ms)
         }
     }
 
-    gpio_put(PIN_LED, led_seq_update(&app.led, now_ms));
+    bool lit = led_seq_update(&app.led, now_ms);
+    gpio_put(PIN_LED, lit);
+    status_led_set(lit);
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +254,10 @@ static void update_led(uint32_t now_ms)
 // ---------------------------------------------------------------------------
 static void update_button(uint32_t now_ms)
 {
+#if ELRS_LITE
+    (void)now_ms;                    // no button fitted; GP3 may be floating or reused
+    return;
+#endif
     bool pressed = !gpio_get(PIN_BUTTON);   // active low
     switch (button_update(&app.button, pressed, now_ms)) {
     case BUTTON_EVENT_SHORT:
@@ -210,16 +284,21 @@ int main(void)
     gpio_init(PIN_BUTTON);
     gpio_set_dir(PIN_BUTTON, GPIO_IN);
     gpio_pull_up(PIN_BUTTON);
+    status_led_init();
 
     // Config
-    if (!config_store_load(&app.config)) {
-        config_defaults(&app.config);
+    if (!config_store_load(&app.profiles)) {
+        profiles_init(&app.profiles, NULL);
         app.config_dirty = true;
     }
+    profiles_get(&app.profiles, app.profiles.active, &app.config);
 
     // Core state
     app.boot_ms = app_now_ms();
     crsf_init(&app.crsf);
+#if ELRS_RX_PARAMS
+    crsf_params_init(&app.rx_params, CRSF_ADDR_FLIGHT_CTRL, CRSF_ADDR_RECEIVER);
+#endif
     failsafe_init(&app.failsafe, app.config.failsafe_ms, FAILSAFE_RETRY_MS);
     led_seq_init(&app.led);
     app.led_state = LED_STATE_OFF;
@@ -258,10 +337,22 @@ int main(void)
             size_t n = rx_uart_read_ts(buf, ts, sizeof(buf));
             bool rc_updated = false;
             for (size_t i = 0; i < n; i++) {
-                if (crsf_feed(&app.crsf, buf[i], ts[i]) == CRSF_TYPE_RC_CHANNELS) {
+                uint8_t type = crsf_feed(&app.crsf, buf[i], ts[i]);
+                if (type == CRSF_TYPE_RC_CHANNELS) {
                     rc_updated = true;
                 }
+#if ELRS_RX_PARAMS
+                else if (type >= CRSF_TYPE_DEVICE_PING) {
+                    // The parser's buffer still holds the frame it just accepted.
+                    crsf_params_on_frame(&app.rx_params, app.crsf.buf, (size_t)app.crsf.frame_len + 2);
+                }
+#endif
             }
+#if ELRS_RX_PARAMS
+            uint8_t req[CRSF_PARAMS_TX_MAX];
+            size_t req_len = crsf_params_poll(&app.rx_params, now, req);
+            if (req_len) rx_uart_write(req, req_len);
+#endif
             if (rc_updated) {
                 mapping_build_report(&app.config, app.crsf.channels, &report);
                 send_report(&report);

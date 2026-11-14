@@ -143,6 +143,18 @@ size_t crsf_build_rx_command(uint8_t *out, char c0, char c1)
     return 6;
 }
 
+size_t crsf_build_rx_model_id(uint8_t *out, uint8_t id)
+{
+    out[0] = CRSF_ADDR_RECEIVER;
+    out[1] = 5;                       // type + 3 payload + crc
+    out[2] = CRSF_TYPE_COMMAND;
+    out[3] = 'm';
+    out[4] = 'm';
+    out[5] = id;
+    out[6] = crc8_dvb_s2(&out[2], 4);
+    return 7;
+}
+
 size_t crsf_build_rc_frame(uint8_t *out, const uint16_t ch[CRSF_NUM_CHANNELS])
 {
     out[0] = CRSF_SYNC_BYTE;

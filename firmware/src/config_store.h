@@ -1,7 +1,9 @@
-// Persist config_t in the last flash sector.
+// Persist the profile store in the last flash sector.
 #pragma once
 #include <stdbool.h>
-#include "mapping.h"
+#include "profiles.h"
 
-bool config_store_load(config_t *cfg);        // false if no valid config stored
-bool config_store_save(const config_t *cfg);  // erases + programs one sector
+// False if nothing usable is stored. A single config_t written by firmware from before
+// profiles existed is accepted and becomes profile 1.
+bool config_store_load(profile_store_t *s);
+bool config_store_save(const profile_store_t *s);   // erases + programs one sector

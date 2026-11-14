@@ -21,8 +21,15 @@
 
 #define LINE_MAX 128
 
-// Passthrough leaves when the host has been silent this long, or disconnects.
-#define PASSTHROUGH_IDLE_MS 10000
+// The ExpressLRS flasher closes and reopens the port between its steps (CLI
+// setup at 115200, bootloader reset at 420000, then esptool), exactly as it
+// does against a flight controller, where passthrough lasts until reboot. So a
+// closed port must not end the bridge at once. It ends when the port has stayed
+// closed this long (flasher finished or gave up) ...
+#define PASSTHROUGH_CLOSED_MS 10000
+// ... or when the host has kept it open but sent nothing for this long. Long
+// enough for esptool to sit waiting on a flash erase.
+#define PASSTHROUGH_IDLE_MS 60000
 
 static char     line[LINE_MAX];
 static size_t   line_len;
@@ -32,9 +39,17 @@ static uint32_t stream_last_ms;
 static uint32_t stream_interval_ms = 50;
 
 static uint32_t passthrough_last_host_ms;
+static uint32_t passthrough_last_open_ms;
 static uint32_t passthrough_baud;
 
 static volatile bool pending_bootsel;
+static bool     bootsel_no_drive;   // `dfu nodrive`: bootloader without the RPI-RP2 drive
+
+#if ELRS_RX_PARAMS
+// A receiver settings request is running; its reply is the reply to the
+// console command that started it, so no further input is read until then.
+static bool rx_params_waiting;
+#endif
 
 // ---------------------------------------------------------------------------
 // Output helpers
@@ -96,6 +111,7 @@ static void passthrough_enter(uint32_t baud, uint32_t now_ms)
 {
     passthrough_baud = baud;
     passthrough_last_host_ms = now_ms;
+    passthrough_last_open_ms = now_ms;
     if (!rx_power_is_on()) {
         rx_power_set(true, now_ms);
     }
@@ -116,7 +132,8 @@ static void passthrough_task(uint32_t now_ms)
 {
     uint8_t buf[256];
 
-    if (!tud_cdc_connected() ||
+    if (tud_cdc_connected()) passthrough_last_open_ms = now_ms;
+    if ((uint32_t)(now_ms - passthrough_last_open_ms) > PASSTHROUGH_CLOSED_MS ||
         (uint32_t)(now_ms - passthrough_last_host_ms) > PASSTHROUGH_IDLE_MS) {
         passthrough_exit();
         return;
@@ -170,9 +187,9 @@ static const char *led_state_name(led_state_t s)
 static void emit_status_json(uint32_t now_ms)
 {
     // Emitted in pieces: the whole line is ~400 bytes, larger than one printf buffer.
-    out_printf("{\"product\":\"%s\",\"version\":\"%s\",\"uptime_ms\":%lu,"
+    out_printf("{\"product\":\"%s\",\"version\":\"%s\",\"variant\":\"%s\",\"uptime_ms\":%lu,"
                "\"rx_power\":%s,\"link\":%s,\"failsafe\":%s,\"led\":\"%s\",",
-               PRODUCT_NAME, FW_VERSION, (unsigned long)(now_ms - app.boot_ms),
+               PRODUCT_NAME, FW_VERSION, VARIANT_NAME, (unsigned long)(now_ms - app.boot_ms),
                rx_power_is_on() ? "true" : "false",
                failsafe_is_active(&app.failsafe) ? "false" : "true",
                failsafe_is_active(&app.failsafe) ? "true" : "false",
@@ -185,10 +202,10 @@ static void emit_status_json(uint32_t now_ms)
                (unsigned long)app.crsf.frames_ok, (unsigned long)app.crsf.frames_crc_err,
                (unsigned long)app.crsf.frames_timeout, (unsigned long)rx_uart_rx_overruns());
     out_printf("\"reports_sent\":%lu,\"reports_dropped\":%lu,\"console_dropped\":%lu,\"console_truncated\":%lu,"
-               "\"config_dirty\":%s}\r\n",
+               "\"profile\":%u,\"config_dirty\":%s}\r\n",
                (unsigned long)app.reports_sent, (unsigned long)app.reports_dropped,
                (unsigned long)out_dropped_bytes, (unsigned long)out_truncated,
-               app.config_dirty ? "true" : "false");
+               (unsigned)app.profiles.active + 1, app.config_dirty ? "true" : "false");
 }
 
 static void emit_map_json(void)
@@ -205,10 +222,111 @@ static void emit_map_json(void)
         out_printf("%s{\"ch\":%u,\"level\":\"%s\"}", b ? "," : "",
                    c->button_channel[b], mapping_level_name((btn_level_t)c->button_level[b]));
     }
-    out_printf("],\"throttle_axis\":%d,\"rx_power_on_boot\":%s,\"failsafe_ms\":%u}\r\n",
+    char name[PROFILE_NAME_LEN];
+    profiles_name(&app.profiles, app.profiles.active, name);    // cleaned on the way in, safe to print as is
+    out_printf("],\"throttle_axis\":%d,\"rx_power_on_boot\":%s,\"failsafe_ms\":%u,"
+               "\"profile\":%u,\"profile_name\":\"%s\"}\r\n",
                c->throttle_axis == 0xFF ? -1 : (int)c->throttle_axis,
-               c->rx_power_on_boot ? "true" : "false", c->failsafe_ms);
+               c->rx_power_on_boot ? "true" : "false", c->failsafe_ms,
+               (unsigned)app.profiles.active + 1, name);
 }
+
+// All 16 slots. `ok` is included so the same line answers the profile commands.
+static void emit_profiles_json(void)
+{
+    out_printf("{\"ok\":true,\"active\":%u,\"profiles\":[", (unsigned)app.profiles.active + 1);
+    for (int n = 0; n < PROFILE_COUNT; n++) {
+        char name[PROFILE_NAME_LEN];
+        profiles_name(&app.profiles, n, name);
+        out_printf("%s{\"n\":%d,\"used\":%s,\"name\":\"%s\"}", n ? "," : "", n + 1,
+                   app.profiles.slot[n].used ? "true" : "false", name);
+    }
+    out_str("]}\r\n");
+}
+
+static void emit_err(const char *msg);
+
+#if ELRS_RX_PARAMS
+// JSON string from device-supplied text: quotes, backslashes, control bytes
+// and anything non-ASCII are escaped (bytes map to U+0000..U+00FF).
+static void out_json_str(const char *s)
+{
+    char buf[64];
+    size_t n = 0;
+    buf[n++] = '"';
+    for (; *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (n > sizeof(buf) - 8) { out_write(buf, n); n = 0; }
+        if (c == '"' || c == '\\') { buf[n++] = '\\'; buf[n++] = (char)c; }
+        else if (c < 0x20 || c >= 0x7F) n += (size_t)snprintf(&buf[n], 7, "\\u%04x", c);
+        else buf[n++] = (char)c;
+    }
+    buf[n++] = '"';
+    out_write(buf, n);
+}
+
+static void emit_rx_params_result(void)
+{
+    const crsf_params_t *p = &app.rx_params;
+    if (p->state != CRSF_PARAMS_DONE) {
+        out_printf("{\"ok\":false,\"error\":\"%s\"}\r\n",
+                   p->err == CRSF_PARAMS_ERR_TIMEOUT  ? "no reply from receiver" :
+                   p->err == CRSF_PARAMS_ERR_OVERFLOW ? "receiver setting too large" :
+                                                        "bad reply from receiver");
+        return;
+    }
+    if (p->op == CRSF_PARAMS_OP_PING) {
+        const crsf_device_info_t *d = &p->info;
+        out_str("{\"ok\":true,\"name\":");
+        out_json_str(d->name);
+        out_printf(",\"serial\":%lu,\"hw\":%lu,\"sw\":\"%u.%u.%u\",\"fields\":%u,\"param_version\":%u}\r\n",
+                   (unsigned long)d->serial, (unsigned long)d->hw_version,
+                   (unsigned)((d->sw_version >> 16) & 0xFF), (unsigned)((d->sw_version >> 8) & 0xFF),
+                   (unsigned)(d->sw_version & 0xFF), d->field_count, d->param_version);
+        return;
+    }
+    crsf_param_field_t f;
+    if (!crsf_params_parse_field(p->field, (size_t)p->field_len + 1, &f)) {
+        emit_err("bad reply from receiver");
+        return;
+    }
+    out_printf("{\"ok\":true,\"id\":%u,\"parent\":%u,\"type\":%u,\"hidden\":%s,\"name\":",
+               p->field_id, f.parent, f.type, f.hidden ? "true" : "false");
+    out_json_str(f.name);
+    switch (f.type) {
+    case CRSF_PARAM_SELECTION:
+        out_str(",\"options\":");
+        out_json_str(f.options);
+        // fall through
+    case CRSF_PARAM_UINT8: case CRSF_PARAM_INT8: case CRSF_PARAM_UINT16:
+    case CRSF_PARAM_INT16: case CRSF_PARAM_UINT32: case CRSF_PARAM_INT32:
+        if (f.type == CRSF_PARAM_UINT32) {
+            out_printf(",\"value\":%lu,\"min\":%lu,\"max\":%lu,\"units\":", (unsigned long)(uint32_t)f.value,
+                       (unsigned long)(uint32_t)f.min, (unsigned long)(uint32_t)f.max);
+        } else {
+            out_printf(",\"value\":%ld,\"min\":%ld,\"max\":%ld,\"units\":", (long)f.value, (long)f.min, (long)f.max);
+        }
+        out_json_str(f.units);
+        break;
+    case CRSF_PARAM_COMMAND:
+        out_printf(",\"step\":%u,\"timeout\":%u", f.step, f.timeout);
+        // fall through
+    case CRSF_PARAM_STRING:
+    case CRSF_PARAM_INFO:
+        out_str(",\"text\":");
+        out_json_str(f.text);
+        break;
+    case CRSF_PARAM_FOLDER:
+        out_str(",\"children\":[");
+        for (unsigned i = 0; i < f.n_children; i++) out_printf("%s%u", i ? "," : "", f.children[i]);
+        out_str("]");
+        break;
+    default:
+        break;
+    }
+    out_str("}\r\n");
+}
+#endif
 
 static void emit_ok(void)
 {
@@ -260,12 +378,28 @@ static void cmd_help(void)
         "  button <0-35> <ch 1-16|0> <low|mid|high|none>\r\n"
         "  throttle <axis 0-7|none>     axis driven low on failsafe\r\n"
         "  failsafe <ms>                RC gap before failsafe (20-250)\r\n"
+        "  profile                      list the 16 mapping profiles\r\n"
+        "  profile use <1-16>           switch profile (drops unsaved changes)\r\n"
+        "  profile save <1-16> [name]   save the current mapping to a slot and switch to it\r\n"
+        "  profile name <1-16> <name>   rename a profile\r\n"
+        "  profile delete <1-16>        empty a slot (not the active one)\r\n"
+#if !ELRS_LITE
         "  rxpower on|off|toggle        receiver power now\r\n"
         "  rxboot on|off                receiver power at plug-in\r\n"
+#endif
         "  bind                         send CRSF bind command to RX\r\n"
+#if !ELRS_LITE
         "  bindcycle                    power-cycle RX 3x to enter bind\r\n"
+#endif
+        "  modelmatch <0-63|off>        set the receiver's model-match ID\r\n"
+#if ELRS_RX_PARAMS
+        "  rxinfo                       receiver name, version, number of settings\r\n"
+        "  rxparam <id>                 read receiver setting <id> (1..count)\r\n"
+        "  rxparam <id> <value> [bytes] write it (bytes 1, 2 or 4; default 1)\r\n"
+#endif
         "  rxbootloader                 send CRSF bootloader command to RX\r\n"
-        "  save | defaults | reboot | dfu\r\n"
+        "  save | defaults | reboot\r\n"
+        "  dfu [nodrive]                reboot into the bootloader; nodrive hides the RPI-RP2 drive\r\n"
         "  #                            Betaflight CLI mode (for ELRS flasher)\r\n");
 }
 
@@ -314,8 +448,8 @@ static void handle_bf_command(int argc, char **argv, uint32_t now_ms)
 
 static void handle_command(char *cmdline, uint32_t now_ms)
 {
-    char *argv[6];
-    int argc = split(cmdline, argv, 6);
+    char *argv[10];                 // room for a profile name of several words
+    int argc = split(cmdline, argv, 10);
     if (argc == 0) {
         out_prompt();
         return;
@@ -326,7 +460,7 @@ static void handle_command(char *cmdline, uint32_t now_ms)
         cmd_help();
     } else if (!strcmp(cmd, "version")) {
         if (bf_mode) handle_bf_command(argc, argv, now_ms);
-        else out_printf("{\"product\":\"%s\",\"version\":\"%s\"}\r\n", PRODUCT_NAME, FW_VERSION);
+        else out_printf("{\"product\":\"%s\",\"version\":\"%s\",\"variant\":\"%s\"}\r\n", PRODUCT_NAME, FW_VERSION, VARIANT_NAME);
     } else if (!strcmp(cmd, "status")) {
         emit_status_json(now_ms);
     } else if (!strcmp(cmd, "channels")) {
@@ -397,6 +531,10 @@ static void handle_command(char *cmdline, uint32_t now_ms)
             app.config_dirty = true;
             emit_ok();
         }
+#if ELRS_LITE
+    } else if (!strcmp(cmd, "rxpower") || !strcmp(cmd, "rxboot") || !strcmp(cmd, "bindcycle")) {
+        emit_err("not on this build: no receiver power switch");
+#endif
     } else if (!strcmp(cmd, "rxpower")) {
         if (argc < 2) emit_err("usage: rxpower on|off|toggle");
         else {
@@ -422,9 +560,79 @@ static void handle_command(char *cmdline, uint32_t now_ms)
     } else if (!strcmp(cmd, "bindcycle")) {
         app_request_bind_cycle(now_ms);
         emit_ok();
+    } else if (!strcmp(cmd, "modelmatch")) {
+        // Stored by the receiver, not by us. ID must equal the radio model's
+        // "Receiver number" when Model Match is on in the ELRS Lua.
+        char *end = NULL;
+        long id = (argc >= 2) ? strtol(argv[1], &end, 10) : -1;
+        bool off = (argc >= 2 && !strcmp(argv[1], "off"));
+        const char *err = NULL;
+        if (!off && (argc < 2 || end == argv[1] || *end || id < 0 || id > CRSF_MODEL_ID_MAX)) {
+            emit_err("usage: modelmatch <0-63|off>");
+        } else if (!app_set_rx_model_id(off ? CRSF_MODEL_ID_OFF : (uint8_t)id, now_ms, &err)) {
+            emit_err(err);
+        } else {
+            emit_ok();
+        }
+#if ELRS_RX_PARAMS
+    } else if (!strcmp(cmd, "rxinfo") || !strcmp(cmd, "rxparam")) {
+        // The reply comes from cli_task once the receiver has answered.
+        const char *err = NULL;
+        char *e1 = NULL, *e2 = NULL, *e3 = NULL;
+        bool info = cmd[2] == 'i';
+        long id = (!info && argc >= 2) ? strtol(argv[1], &e1, 10) : 0;
+        long val = (argc >= 3) ? strtol(argv[2], &e2, 0) : 0;
+        long width = (argc >= 4) ? strtol(argv[3], &e3, 10) : 1;
+        if (!info && (argc < 2 || *e1 || id < 0 || id > 255 || (argc >= 3 && (e2 == argv[2] || *e2)) ||
+                      (argc >= 4 && (*e3 || (width != 1 && width != 2 && width != 4))))) {
+            emit_err("usage: rxparam <id> [value [1|2|4]]");
+        } else if (!app_rx_ready(now_ms, &err)) {
+            emit_err(err);
+        } else {
+            crsf_params_cancel(&app.rx_params);
+            if (info) {
+                crsf_params_ping(&app.rx_params);
+            } else if (argc >= 3) {
+                uint8_t be[4];                         // big-endian, two's complement
+                for (long i = 0; i < width; i++) be[i] = (uint8_t)((uint32_t)val >> (8 * (width - 1 - i)));
+                crsf_params_write(&app.rx_params, (uint8_t)id, be, (size_t)width);
+            } else {
+                crsf_params_read(&app.rx_params, (uint8_t)id);
+            }
+            rx_params_waiting = true;
+            return;
+        }
+#endif
     } else if (!strcmp(cmd, "rxbootloader")) {
         app_send_rx_command('b', 'l');
         emit_ok();
+    } else if (!strcmp(cmd, "profile")) {
+        // Slot numbers are 1..16 on the console. A name is the rest of the line.
+        int n = (argc >= 3) ? atoi(argv[2]) - 1 : -1;
+        char name[48] = "";
+        for (int i = 3; i < argc; i++) {
+            size_t len = strlen(name);
+            snprintf(name + len, sizeof(name) - len, "%s%s", i > 3 ? " " : "", argv[i]);
+        }
+        if (argc == 1 || !strcmp(argv[1], "list")) {
+            emit_profiles_json();
+        } else if (n < 0 || n >= PROFILE_COUNT) {
+            emit_err("usage: profile [use|save|name|delete] <1-16> [name]");
+        } else if (!strcmp(argv[1], "use")) {
+            if (app_profile_use(n)) emit_profiles_json(); else emit_err("could not store the profile");
+        } else if (!strcmp(argv[1], "save")) {
+            if (app_profile_save_as(n, name)) emit_profiles_json(); else emit_err("could not store the profile");
+        } else if (!strcmp(argv[1], "name")) {
+            if (!app.profiles.slot[n].used) emit_err("that slot is empty");
+            else if (app_profile_rename(n, name)) emit_profiles_json();
+            else emit_err("name needs letters or digits; allowed: A-Z a-z 0-9 space - _ . + ( ) #");
+        } else if (!strcmp(argv[1], "delete")) {
+            if (n == app.profiles.active) emit_err("cannot delete the active profile; switch to another first");
+            else if (app_profile_delete(n)) emit_profiles_json();
+            else emit_err("could not store the change");
+        } else {
+            emit_err("usage: profile [use|save|name|delete] <1-16> [name]");
+        }
     } else if (!strcmp(cmd, "save")) {
         app_save_config();
         out_printf("{\"ok\":%s}\r\n", app.config_dirty ? "false" : "true");
@@ -439,7 +647,8 @@ static void handle_command(char *cmdline, uint32_t now_ms)
         sleep_ms(50);
         watchdog_reboot(0, 0, 0);
     } else if (!strcmp(cmd, "dfu")) {
-        out_str("{\"ok\":true,\"bootsel\":true}\r\n");
+        bootsel_no_drive = (argc >= 2 && !strcmp(argv[1], "nodrive"));
+        out_printf("{\"ok\":true,\"bootsel\":true,\"drive\":%s}\r\n", bootsel_no_drive ? "false" : "true");
         tud_cdc_write_flush();
         pending_bootsel = true;
     } else if (bf_mode) {
@@ -480,7 +689,7 @@ void cli_on_line_coding(uint32_t bit_rate)
 void cli_task(uint32_t now_ms)
 {
     if (pending_bootsel) {
-        app_reboot_to_bootsel();
+        app_reboot_to_bootsel(bootsel_no_drive);
     }
 
     if (app.passthrough) {
@@ -492,10 +701,23 @@ void cli_task(uint32_t now_ms)
         line_len = 0;
         bf_mode = false;
         stream = false;
+#if ELRS_RX_PARAMS
+        rx_params_waiting = false;
+        crsf_params_cancel(&app.rx_params);
+#endif
         return;
     }
 
+#if ELRS_RX_PARAMS
+    if (rx_params_waiting && app.rx_params.state != CRSF_PARAMS_BUSY) {
+        rx_params_waiting = false;
+        emit_rx_params_result();
+        out_prompt();
+    }
+    while (!rx_params_waiting && tud_cdc_available()) {
+#else
     while (tud_cdc_available()) {
+#endif
         uint8_t c;
         if (tud_cdc_read(&c, 1) != 1) break;
 
@@ -513,10 +735,11 @@ void cli_task(uint32_t now_ms)
                 if (bf_mode) out_str("\r\n");   // echo newline like BF does
                 handle_command(line, now_ms);
                 line_len = 0;
-            } else if (bf_mode) {
-                out_prompt();
-                tud_cdc_write_flush();
             }
+            // An empty line prints nothing, as in Betaflight. The ExpressLRS
+            // flasher ends every command with CR LF and reads up to the first
+            // "# "; a second prompt for the LF arrives late and is taken as
+            // the (empty) reply to its next command.
             continue;
         }
 

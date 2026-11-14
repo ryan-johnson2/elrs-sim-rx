@@ -1,0 +1,18 @@
+; WS2812 driver for the RP2040-Zero's onboard RGB LED. One 24-bit word per pixel, MSB first.
+; Same timing as the pico-examples program: 10 PIO cycles per bit at 800 kHz.
+.program ws2812
+.side_set 1
+
+.define public T1 2
+.define public T2 5
+.define public T3 3
+
+.wrap_target
+bitloop:
+    out x, 1       side 0 [T3 - 1]
+    jmp !x do_zero side 1 [T1 - 1]
+do_one:
+    jmp bitloop    side 1 [T2 - 1]
+do_zero:
+    nop            side 0 [T2 - 1]
+.wrap
