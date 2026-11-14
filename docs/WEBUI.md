@@ -28,10 +28,11 @@ Two channels, set up in `.github/workflows/ci.yml` and not yet run against a rea
 | Development | every push to `devel` | A rolling prerelease named `devel-build`, replaced each time. Served at `/devel/` |
 
 After either one, the `pages` job downloads the latest release and the devel build and runs
-`tools/assemble_site.py`, which lays out the site and merges the two manifests. Both pages
-list all four firmware files; the root page defaults to the release full build, the `/devel/`
-page to the development full build. Pushes to `main` without a tag are built and tested but
-not published. Until the first release exists, the site root serves the devel page.
+`tools/assemble_site.py`, which lays out the site. The site root is the release page and lists
+only the release firmware, so it changes only when a version is tagged. The `/devel/` page
+lists the development firmware first, then the release builds. Pushes to `main` without a tag
+are built and tested but not published. Until the first release exists, the site root is a
+short notice that links to `/devel/`.
 
 One-time repository setup: Pages source set to "GitHub Actions", and the `github-pages`
 environment allowed to deploy from the `devel` branch and from `v*` tags.
