@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELRS Sim RX Perfboard Layout</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: board drawing pinned on the left with a top/bottom flip, hole-by-hole tables on the right; one column when narrow. */
+:root{
+  --bg:#eef1f3; --surface:#ffffff; --ink:#17212b; --muted:#5b6876; --rule:#d4dbe2;
+  --accent:#0b6b82; --accent-soft:#dff0f4; --warn:#a84a05; --warn-soft:#fcefdf; --ok:#1c7c45;
+  --board:#2f7a57; --pad:#d9dfd2; --part:#27303b; --part-ink:#f2f5f7; --pcb:#1e4f8a; --res:#dcbf93;
+  --v5:#d02a2a; --sw:#e07a00; --tx:#17853a; --rx:#1d5bd0; --sig:#7a4fd0; --sig2:#0b8a8a; --sig3:#c2338a; --gnd:#16191f; --brown:#8b5a2b;
+  --display:"Space Grotesk","Inter",system-ui,sans-serif;
+  --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"DejaVu Sans Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#12171c; --surface:#1a2128; --ink:#e6ebf0; --muted:#97a3b0; --rule:#2e3842;
+  --accent:#5cc4dc; --accent-soft:#16323a; --warn:#f0a35a; --warn-soft:#38291a; --ok:#5fcf8f;
+  --board:#1d4a36; --pad:#8fa39a; --part:#0c1014; --part-ink:#dfe6ec; --pcb:#173a66; --res:#a88a5c;
+  --v5:#ff6b6b; --sw:#ffa53d; --tx:#4fd07c; --rx:#6aa2ff; --sig:#b79bff; --sig2:#4fd6d0; --sig3:#ff7ac8; --gnd:#e3e8ed; --brown:#c9935a;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#12171c; --surface:#1a2128; --ink:#e6ebf0; --muted:#97a3b0; --rule:#2e3842;
+  --accent:#5cc4dc; --accent-soft:#16323a; --warn:#f0a35a; --warn-soft:#38291a; --ok:#5fcf8f;
+  --board:#1d4a36; --pad:#8fa39a; --part:#0c1014; --part-ink:#dfe6ec; --pcb:#173a66; --res:#a88a5c;
+  --v5:#ff6b6b; --sw:#ffa53d; --tx:#4fd07c; --rx:#6aa2ff; --sig:#b79bff; --sig2:#4fd6d0; --sig3:#ff7ac8; --gnd:#e3e8ed; --brown:#c9935a;
+  color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:22px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(26px,4vw,36px);font-weight:700;letter-spacing:-.02em}
+h2{font-size:21px;font-weight:700;border-bottom:2px solid var(--ink);padding-bottom:8px}
+h3{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+p{margin:0;max-width:68ch}
+ul,ol{margin:0;padding-left:20px;max-width:68ch;display:flex;flex-direction:column;gap:6px}
+code{font-family:var(--mono);font-size:.88em;background:var(--accent-soft);padding:.08em .35em;border-radius:4px}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.lede{color:var(--muted);margin-top:8px}
+.rule{background:var(--warn-soft);border-left:3px solid var(--warn);padding:12px 16px;border-radius:0 6px 6px 0}
+.rule b{color:var(--warn)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:28px}
+.layout>*{min-width:0}
+@media (min-width:1040px){
+  .layout{grid-template-columns:minmax(0,440px) minmax(0,1fr);align-items:start}
+  aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100vh - 24px);overflow:auto}
+}
+aside{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.views{display:flex;flex-wrap:wrap;gap:6px}
+.views button{background:transparent;border:1px solid var(--rule);border-radius:6px;padding:4px 10px;font-size:12.5px;font-weight:500}
+.views button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.pbwrap{overflow-x:auto}
+#pb{display:block;width:100%;min-width:360px;height:auto}
+#pb text{font-family:var(--body)}
+#pb .mono{font-family:var(--mono)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.chip{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.cap{font-size:12.5px;color:var(--muted)}
+#pb g.done{opacity:.2}
+td input[type=checkbox]{width:17px;height:17px;margin:2px 0 0;accent-color:var(--ok);cursor:pointer}
+tr:has(input:checked) td{color:var(--muted)}
+main{display:flex;flex-direction:column;gap:32px}
+section{display:flex;flex-direction:column;gap:12px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);border-bottom:1.5px solid var(--ink);padding:0 12px 6px 0}
+td{padding:7px 12px 7px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+td.h{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+td:first-child{font-weight:600;white-space:nowrap}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">ELRS Sim RX · Phase 1b</div>
+    <h1>Perfboard layout</h1>
+    <p class="lede">First draft for the soldered, cased unit: every part, every copper run and every lead by hole. The connections are checked against the same netlist as the breadboard build. The physical fit is drawn from typical part sizes and has not been built yet.</p>
+  </header>
+
+  <div class="rule"><b>Use the green board.</b> It has plated holes on both sides and isolated pads, so joints are strong and the layout can be compact. The yellow board would let you copy the breadboard strip for strip, but it is single-sided phenolic whose pads lift easily, its five-hole strips leave almost no free holes beside the module, and it makes a much larger case.</div>
+
+  <div class="layout">
+    <aside>
+      <h3>Board, 14 × 20 holes</h3>
+      <div class="views" id="views" role="group" aria-label="Board side">
+        <button data-v="top" aria-pressed="true">Top, parts side</button>
+        <button data-v="bottom" aria-pressed="false">Bottom, solder side</button>
+      </div>
+      <div class="pbwrap"><svg id="pb" viewBox="0 0 372 500" role="img" aria-label="Perfboard placement and copper runs"></svg></div>
+      <div class="legend">
+        <span>thin line = wire run, fat blob = solder bridge</span>
+        <span><i class="chip" style="background:var(--v5)"></i>5 V</span>
+        <span><i class="chip" style="background:var(--gnd)"></i>ground</span>
+        <span><i class="chip" style="background:var(--sw)"></i>switched 5 V</span>
+        <span><i class="chip" style="background:var(--tx)"></i>GP0</span>
+        <span><i class="chip" style="background:var(--rx)"></i>GP1</span>
+        <span><i class="chip" style="background:var(--sig)"></i>GP2, GP3, GP4</span>
+        <span><i class="chip" style="background:var(--sig2)"></i>Q2 and Q3 gates</span>
+        <span><i class="chip" style="background:var(--sig3)"></i>Q1 gate, LED −</span>
+      </div>
+      <p class="cap" id="prog" style="font-weight:600;color:var(--ink)"></p>
+      <p class="cap">Coloured lines are copper runs on the bottom. Numbered circles are where the button and receiver leads solder in. The bottom view is mirrored left to right, as you see it with the board flipped over, so column 1 is on the right.</p>
+    </aside>
+
+    <main>
+      <section>
+        <h2>How to read it</h2>
+        <ul>
+          <li>Holes are named row letter then column number, as printed on your board: A4 is row A, column 4. Row A is the USB end and column 1 is the left edge seen from the parts side. Rows Q to T are left clear for the receiver.</li>
+          <li>The layout fills a 14 × 20 hole (4 × 6 cm) board exactly: numbers 1 to 14 across, letters A to T along the length. Either end can be row A, so put the USB end wherever the printing says A.</li>
+          <li>A copper run is a line of neighbouring pads joined on the bottom. Lay a resistor lead offcut along the pads and solder it down, or bridge pad to pad with solder for the two-pad ones.</li>
+          <li>There are no separate jumper wires. The only wires are the four button leads and the four receiver leads.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Making a copper run</h2>
+        <ol>
+          <li>Fit the parts on that run first, pushed through from the top.</li>
+          <li>Where you can, do not cut the part's leg: bend it flat along the run. For a two-pad run that leg is the whole run.</li>
+          <li>For longer runs, lay bare wire (a leg offcut or stripped solid wire) along the path in the table, with a right-angle bend at each corner.</li>
+          <li>Solder one end to tack it, press it flat, then solder the far end, every corner, every pad with a part's leg in it, and every second or third pad between.</li>
+          <li>A second line in the table for the same net is a branch: a separate piece that overlaps the first at the shared pad.</li>
+          <li>Where a run ends at a module pin, stop the wire at the edge of that pad. When the module goes on, let the solder flow onto the wire end.</li>
+          <li>Afterwards, check with the meter that neighbouring runs do not beep to each other.</li>
+        </ol>
+        <p>Thin insulated wire soldered point to point works too: connect every hole on the run that has a part leg or a lead in it.</p>
+      </section>
+
+      <section>
+        <h2>Parts</h2>
+        <div class="tw"><table id="t-parts"><tr><th>Done</th><th>Part</th><th>Value</th><th>Holes</th><th>Note</th></tr></table></div>
+      </section>
+
+      <section>
+        <h2>Wire runs, bottom side</h2>
+        <p>Bare wire laid along the pads. Each row is one piece of wire.</p>
+        <div class="tw"><table id="t-routes"><tr><th>Done</th><th>Net</th><th>Path</th><th>What it joins</th></tr></table></div>
+      </section>
+
+      <section>
+        <h2>Solder bridges, bottom side</h2>
+        <p>No wire. Each joins one part or lead hole to the pad beside it: bend the part's leg over onto the neighbouring pad, or bridge the two pads with solder. On the drawing these are the short fat blobs.</p>
+        <div class="tw"><table id="t-bridges"><tr><th>Done</th><th>Net</th><th>Pads</th><th>What it joins</th></tr></table></div>
+      </section>
+
+      <section>
+        <h2>Leads</h2>
+        <div class="tw"><table id="t-leads"><tr><th>Done</th><th>#</th><th>Lead</th><th>Hole</th><th>Connects to</th></tr></table></div>
+      </section>
+
+      <section>
+        <h2>Build order</h2>
+        <ol>
+          <li><b>Trim the USB end.</b> The board extends several millimetres past row 1, which would leave the USB-C socket set back from the case wall. Cut or file that end so the board stops about 1 mm beyond the row A holes.</li>
+          <li><b>Fix the orientation.</b> Row A is the USB end and column 1 is on the left seen from the parts side. On the bottom the numbers run right to left. If the printing on your board has column 1 on the right when row A is at the top, the layout must be mirrored.</li>
+          <li><b>Resistors first</b>, flat to the board. Keep the lead offcuts for the copper runs.</li>
+          <li><b>Copper runs.</b> Do the long ones (5 V, ground, GP2) before the parts crowd the bottom. Tick each off in the table.</li>
+          <li><b>Q2, Q3, then Q1</b> on its adapter with header pin 1 at L2.</li>
+          <li><b>C2 and C1.</b> Lay C1 on its side if you want a thinner case; its striped leg goes in P7.</li>
+          <li><b>RP2040-Zero last</b>, since it covers the most pads. Solder two opposite corner pins, check it sits flat, then the rest.</li>
+          <li><b>Meter check before any power:</b> A1 to K5 (5 V to ground) must not beep. Then beep each run end to end against the table.</li>
+          <li><b>Plug in with no leads attached</b> and repeat stage 1 of the breadboard guide. Then add the button leads (stage 2), then the receiver (stages 3 and 4 in one go, since the switch is already there).</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>For the case</h2>
+        <ul>
+          <li><b>Board:</b> the 14 × 20 board is used whole apart from trimming the USB end, about 33 × 48 mm of hole area plus the edges. Corner holes can take case screws where they survive the trim.</li>
+          <li><b>Receiver:</b> the EP2 sits flat on rows Q to T, sleeved and held with foam tape, antenna toward the end away from USB. Keep its leads short, about 3 cm.</li>
+          <li><b>Height:</b> the module on its pins with the USB-C socket on top is the tallest fixed part, roughly 7 mm above the board. C1 standing up is about 11 mm; lying down it is under the module height.</li>
+          <li><b>Button:</b> 12.2 mm panel hole, 13.4 mm deep behind the panel. It mounts on the lid over the lower half of the board, where the parts are low.</li>
+          <li><b>USB-C:</b> cutout at the row A end, centred between columns 4 and 10.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Not yet confirmed</h2>
+        <ul>
+          <li>Whether your board's pads are all isolated from each other. Beep a few neighbouring pads to be sure.</li>
+          <li>Which way the Q1 adapter's body extends from its pins. Column 3 is left empty for it.</li>
+          <li>R1 sits in column 2 right beside the module. If it fouls the module edge, stand it slightly off the board.</li>
+          <li>The EP2 itself: this assumes its four pads can take short wires to the numbered holes.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+/*LAYOUT*/
+const COLS=14, ROWS=20;
+const PARTS=[
+ {id:'U1',kind:'mcu',val:'RP2040-Zero',note:'USB-C at the row A end. Left pins A4 to I4, right pins A10 to I10.',
+  pins:{'5V':[4,1],GND:[4,2],GP0:[10,1],GP1:[10,2],GP2:[10,3],GP3:[10,4],GP4:[10,5]},
+  nc:[[4,3],[4,4],[4,5],[4,6],[4,7],[4,8],[4,9],[10,6],[10,7],[10,8],[10,9]]},
+ {id:'R1',kind:'res',val:'10 kΩ',note:'Q1 gate pull-up',pins:{a:[2,11],b:[2,7]}},
+ {id:'R2',kind:'res',val:'100 Ω',note:'GP2 to Q2 gate',pins:{a:[9,10],b:[9,14]}},
+ {id:'R3',kind:'res',val:'100 kΩ',note:'Q2 gate pull-down',pins:{a:[10,14],b:[14,14]}},
+ {id:'R4',kind:'res',val:'100 Ω',note:'GP4 to Q3 gate',pins:{a:[11,5],b:[11,9]}},
+ {id:'R5',kind:'res',val:'100 kΩ',note:'Q3 gate pull-down',pins:{a:[14,8],b:[14,12]}},
+ {id:'Q1',kind:'sot',val:'AO3401A on adapter',note:'Header pin 1 (gate) at L2, pin 3 (drain) M2, pin 2 (source) N2',pins:{G:[2,12],D:[2,13],S:[2,14]}},
+ {id:'Q2',kind:'to92',val:'2N7000',flat:'up',note:'Flat face toward the module, facing row K',pins:{D:[6,12],G:[7,12],S:[8,12]}},
+ {id:'Q3',kind:'to92',val:'2N7000',flat:'down',note:'Flat face away from the module, facing row K',pins:{S:[11,10],G:[12,10],D:[13,10]}},
+ {id:'C1',kind:'cap',val:'10 µF',note:'Striped (−) leg in P7',pins:{'+':[7,15],'-':[7,16]}},
+ {id:'C2',kind:'cer',val:'100 nF',note:'Either way round',pins:{a:[4,15],b:[4,16]}},
+];
+const ROUTES=[
+ {net:'V5',col:'v5',name:'5 V',paths:[{k:'wire',p:[[4,1],[1,1],[1,14]],why:'Module 5V pin, then down the left edge'},{k:'bridge',p:[[1,7],[2,7]],why:'R1 to the 5 V run'},{k:'bridge',p:[[1,14],[2,14]],why:'Q1 source to the 5 V run'}]},
+ {net:'GND',col:'gnd',name:'Ground',paths:[{k:'bridge',p:[[4,2],[5,2]],why:'Module GND pin to the ground run'},{k:'wire',p:[[5,2],[5,11],[14,11],[14,16],[4,16]],why:'Under the module, then around the lower half. R5, R3, C1 −, C2 and leads 2 and 8 sit on it'},{k:'bridge',p:[[11,10],[11,11]],why:'Q3 source to the ground run'},{k:'bridge',p:[[8,12],[8,11]],why:'Q2 source to the ground run'}]},
+ {net:'GP0',col:'tx',name:'GP0',paths:[{k:'bridge',p:[[10,1],[11,1]],why:'Module GP0 pin to lead 5'}]},
+ {net:'GP1',col:'rx',name:'GP1',paths:[{k:'bridge',p:[[10,2],[11,2]],why:'Module GP1 pin to lead 6'}]},
+ {net:'GP2',col:'sig',name:'GP2',paths:[{k:'bridge',p:[[10,3],[9,3]],why:'Module GP2 pin to the GP2 run'},{k:'wire',p:[[9,3],[9,10]],why:'Under the module to R2'}]},
+ {net:'GP3',col:'sig',name:'GP3',paths:[{k:'bridge',p:[[10,4],[11,4]],why:'Module GP3 pin to lead 1'}]},
+ {net:'GP4',col:'sig',name:'GP4',paths:[{k:'bridge',p:[[10,5],[11,5]],why:'Module GP4 pin to R4'}]},
+ {net:'Q2G',col:'sig2',name:'Q2 gate',paths:[{k:'wire',p:[[9,14],[7,14],[7,12]],why:'R2 to Q2 gate'},{k:'bridge',p:[[9,14],[10,14]],why:'R3 to the gate run'}]},
+ {net:'Q1G',col:'sig3',name:'Q1 gate',paths:[{k:'wire',p:[[2,12],[6,12]],why:'Q1 gate to Q2 drain'},{k:'bridge',p:[[2,11],[2,12]],why:'R1 to Q1 gate'}]},
+ {net:'SW5',col:'sw',name:'Switched 5 V',paths:[{k:'wire',p:[[2,13],[6,13],[6,15]],why:'Q1 drain toward the capacitors'},{k:'wire',p:[[6,15],[4,15]],why:'On to lead 7 and C2'},{k:'bridge',p:[[6,15],[7,15]],why:'C1 + to the switched 5 V run'}]},
+ {net:'Q3G',col:'sig2',name:'Q3 gate',paths:[{k:'wire',p:[[12,10],[12,8],[14,8]],why:'Q3 gate to R5'},{k:'bridge',p:[[11,9],[12,9]],why:'R4 to the gate run'}]},
+ {net:'LEDN',col:'sig3',name:'LED −',paths:[{k:'bridge',p:[[13,10],[13,9]],why:'Q3 drain to lead 4'}]},
+];
+const LEADS=[
+ {n:1,pin:'SW1.A',col:'brown',lead:'Button brown',at:[11,4],to:'GP3'},
+ {n:2,pin:'SW1.B',col:'brown',lead:'Button brown',at:[10,11],to:'Ground'},
+ {n:3,pin:'SW1.LED+',col:'tx',lead:'Button green (LED +)',at:[1,4],to:'5 V'},
+ {n:4,pin:'SW1.LED-',col:'gnd',lead:'Button black (LED −)',at:[13,9],to:'Q3 drain'},
+ {n:5,pin:'EP2.RX',col:'tx',lead:'Receiver green (RX pad)',at:[11,1],to:'GP0'},
+ {n:6,pin:'EP2.TX',col:'rx',lead:'Receiver blue (TX pad)',at:[11,2],to:'GP1'},
+ {n:7,pin:'EP2.5V',col:'v5',lead:'Receiver red (5V pad)',at:[5,15],to:'Switched 5 V'},
+ {n:8,pin:'EP2.GND',col:'gnd',lead:'Receiver black (GND pad)',at:[9,16],to:'Ground'},
+];
+const NETS={
+ V5:['U1.5V','Q1.S','R1.b','SW1.LED+'],
+ GND:['U1.GND','Q2.S','Q3.S','R3.b','R5.b','C1.-','C2.b','EP2.GND','SW1.B'],
+ GP0:['U1.GP0','EP2.RX'], GP1:['U1.GP1','EP2.TX'],
+ GP2:['U1.GP2','R2.a'], Q2G:['R2.b','Q2.G','R3.a'], Q1G:['Q2.D','Q1.G','R1.a'],
+ SW5:['Q1.D','C1.+','C2.a','EP2.5V'],
+ GP3:['U1.GP3','SW1.A'], GP4:['U1.GP4','R4.a'], Q3G:['R4.b','Q3.G','R5.a'], LEDN:['Q3.D','SW1.LED-'],
+};
+function expand(path){const out=[];for(let i=0;i<path.length-1;i++){let [c,r]=path[i];const [c2,r2]=path[i+1];
+  if(c!==c2&&r!==r2) throw new Error('diagonal segment');
+  out.push([c,r]);while(c!==c2||r!==r2){c+=Math.sign(c2-c);r+=Math.sign(r2-r);out.push([c,r]);}}return out;}
+/*END*/
+
+const $=s=>document.querySelector(s);
+const hole=([c,r])=>'ABCDEFGHIJKLMNOPQRST'[r-1]+c;
+let side='top';
+const KEY='elrs-sim-rx-perfboard-ticks';let ticks={};try{ticks=JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){}
+const g=(id,s)=>`<g class="${ticks[id]?'done':''}">${s}</g>`;
+const X=c=>34+((side==='bottom'?COLS+1-c:c)-1)*22, Y=r=>46+(r-1)*22;
+const P=p=>({x:X(p[0]),y:Y(p[1])});
+
+function drawPart(it){
+  const pins=Object.values(it.pins).map(P), ink='var(--ink)';
+  const lab=(x,y,t,a)=>`<text x="${x}" y="${y}" text-anchor="${a||'middle'}" font-size="10" font-weight="600" fill="var(--ink)" stroke="var(--board)" stroke-width="3" paint-order="stroke" style="fill:var(--part-ink)">${t}</text>`;
+  if(it.kind==='res'){const [a,b]=pins,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,v=a.x===b.x;
+    return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="var(--pad)" stroke-width="1.6"/>`+
+      (v?`<rect x="${mx-5}" y="${my-17}" width="10" height="34" rx="3" fill="var(--res)" stroke="${ink}"/>`:`<rect x="${mx-17}" y="${my-5}" width="34" height="10" rx="3" fill="var(--res)" stroke="${ink}"/>`)+
+      (v?lab(mx,my+3.5,it.id).replace('<text','<text transform="rotate(-90 '+mx+' '+my+')"').replace(`y="${my+3.5}"`,`y="${my+3.5}"`):lab(mx,my-9,it.id));}
+  if(it.kind==='to92'){const xs=pins.map(p=>p.x),x0=Math.min(...xs)-9,x1=Math.max(...xs)+9,y=pins[0].y,fy=it.flat==='up'?y-9:y+9;
+    let s=`<rect x="${x0}" y="${y-9}" width="${x1-x0}" height="18" rx="7" fill="var(--part)"/><line x1="${x0+3}" y1="${fy}" x2="${x1-3}" y2="${fy}" stroke="var(--part-ink)" stroke-width="2.6"/>`;
+    Object.entries(it.pins).forEach(([k,h])=>{const p=P(h);s+=`<text x="${p.x}" y="${p.y+3.5}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--part-ink)">${k}</text>`;});
+    return s+lab((x0+x1)/2,it.flat==='up'?y+20:y-13,it.id);}
+  if(it.kind==='sot'){const p0=pins[0],p2=pins[2],dir=side==='bottom'?-1:1,xa=p0.x-9*dir,xb=p0.x+31*dir;
+    let s=`<rect x="${Math.min(xa,xb)}" y="${p0.y-9}" width="40" height="${p2.y-p0.y+18}" rx="2" fill="var(--pcb)"/>`;
+    Object.entries(it.pins).forEach(([k,h])=>{const p=P(h);s+=`<text x="${p.x}" y="${p.y+3.5}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--part-ink)">${k}</text>`;});
+    return s+`<text x="${p0.x+19*dir}" y="${(p0.y+p2.y)/2+3.5}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--part-ink)">Q1</text>`;}
+  if(it.kind==='cap'){const [a,b]=pins,cy=(a.y+b.y)/2;
+    return `<circle cx="${a.x}" cy="${cy}" r="14" fill="var(--part)"/><path d="M${a.x-13},${b.y-5} a14,14 0 0 0 26,0 z" fill="var(--part-ink)" opacity=".4"/>`+
+      `<text x="${a.x}" y="${a.y+2}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--part-ink)">+</text>`+lab(a.x+(side==='bottom'?-24:24),cy+3.5,it.id);}
+  if(it.kind==='cer'){const [a,b]=pins;
+    return `<rect x="${a.x-6}" y="${a.y-6}" width="12" height="${b.y-a.y+12}" rx="6" fill="var(--res)" stroke="${ink}"/>`+lab(a.x+(side==='bottom'?16:-16),(a.y+b.y)/2+3.5,it.id);}
+  if(it.kind==='mcu'){const xl=Math.min(X(4),X(10))-11,w=6*22+22;
+    let s=`<rect x="${X(7)-18}" y="6" width="36" height="28" rx="4" fill="var(--pad)" opacity=".8"/><text x="${X(7)}" y="18" text-anchor="middle" font-size="7.5" fill="var(--part)">USB-C</text>`+
+      `<rect x="${xl}" y="${Y(1)-14}" width="${w}" height="${Y(9)-Y(1)+28}" rx="6" fill="var(--part)" opacity="${side==='top'?.62:.2}" stroke="var(--part-ink)" stroke-dasharray="${side==='top'?'0':'4 3'}"/>`+
+      `<text x="${X(7)}" y="${Y(7)+2}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--part-ink)">U1 RP2040-Zero</text>`;
+    Object.entries(it.pins).forEach(([k,h])=>{const p=P(h),inner=(h[0]===4)===(side==='top');
+      s+=`<text x="${p.x+(inner?9:-9)}" y="${p.y+3.5}" text-anchor="${inner?'start':'end'}" font-size="8.5" font-weight="600" fill="var(--part-ink)">${k}</text>`;});
+    return s;}
+  return '';
+}
+function render(){
+  let s=`<rect x="14" y="26" width="${(COLS-1)*22+40}" height="${(ROWS-1)*22+40}" rx="6" fill="var(--board)"/>`;
+  for(let c=1;c<=COLS;c++) s+=`<text class="mono" x="${X(c)}" y="${Y(ROWS)+34}" text-anchor="middle" font-size="9" fill="var(--muted)">${c}</text>`;
+  for(let r=1;r<=ROWS;r++){s+=`<text class="mono" x="${(COLS-1)*22+62}" y="${Y(r)+3}" text-anchor="start" font-size="8.5" fill="var(--muted)">${'ABCDEFGHIJKLMNOPQRST'[r-1]}</text>`;
+    for(let c=1;c<=COLS;c++) s+=`<circle cx="${X(c)}" cy="${Y(r)}" r="3.4" fill="none" stroke="var(--pad)" stroke-width="1.6" opacity=".75"/>`;}
+  const parts=PARTS.map(p=>g('p-'+p.id,drawPart(p))).join('');
+  const routes=ROUTES.map(rt=>rt.paths.map((s,i)=>{const p=s.p,bw=s.k==='bridge'?10.5:5.5;return g('r-'+rt.net+'-'+i,`<polyline points="${p.map(h=>X(h[0])+','+Y(h[1])).join(' ')}" fill="none" stroke="var(--board)" stroke-width="${bw+3}" stroke-linecap="round" stroke-linejoin="round"/><polyline points="${p.map(h=>X(h[0])+','+Y(h[1])).join(' ')}" fill="none" stroke="var(--${rt.col})" stroke-width="${bw}" stroke-linecap="round" stroke-linejoin="round"/>`);}).join('')).join('');
+  const x5=Math.min(X(5),X(10)),zone=`<rect x="${x5-9}" y="${Y(17)-8}" width="${5*22+18}" height="${3*22+16}" rx="4" fill="none" stroke="var(--pad)" stroke-dasharray="5 4"/><text x="${x5+55}" y="${Y(18)+14}" text-anchor="middle" font-size="9.5" fill="var(--part-ink)">EP2 receiver, taped down</text>`;
+  const leads=LEADS.map(l=>{const p=P(l.at);return g('l-'+l.n,`<circle cx="${p.x}" cy="${p.y}" r="7.5" fill="var(--${l.col})" stroke="var(--part-ink)" stroke-width="1.4"/><text x="${p.x}" y="${p.y+3.3}" text-anchor="middle" font-size="9.5" font-weight="700" fill="var(--bg)" stroke="var(--ink)" stroke-width=".4">${l.n}</text>`);}).join('');
+  s+= side==='top' ? `<g opacity=".8">${routes}</g>${zone}${parts}${leads}` : `<g opacity=".45">${parts}</g>${zone}${routes}${leads}`;
+  $('#pb').innerHTML=s;
+  document.querySelectorAll('#views button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===side)));
+}
+$('#views').addEventListener('click',e=>{const b=e.target.closest('button');if(b){side=b.dataset.v;render();}});
+render();
+
+$('#t-parts').insertAdjacentHTML('beforeend',PARTS.map(p=>`<tr><td><input type="checkbox" id="p-${p.id}" aria-label="${p.id} done"></td><td><b>${p.id}</b></td><td>${p.val}</td><td class="h">${p.kind==='mcu'?'A4–I4, A10–I10':Object.entries(p.pins).map(([k,h])=>(p.kind==='res'||p.kind==='cer'?'':k+' ')+hole(h)).join(p.kind==='res'||p.kind==='cer'?' ↔ ':' · ')}</td><td>${p.note}</td></tr>`).join(''));
+const segRows=k=>ROUTES.flatMap(r=>r.paths.map((s,i)=>({r,s,i})).filter(x=>x.s.k===k)).map(({r,s,i})=>`<tr><td><input type="checkbox" id="r-${r.net}-${i}" aria-label="${r.name} done"></td><td><i class="chip" style="background:var(--${r.col})"></i>${r.name}</td><td class="h">${s.p.map(hole).join(' → ')}</td><td>${s.why||''}</td></tr>`).join('');
+$('#t-routes').insertAdjacentHTML('beforeend',segRows('wire'));
+$('#t-bridges').insertAdjacentHTML('beforeend',segRows('bridge'));
+$('#t-leads').insertAdjacentHTML('beforeend',LEADS.map(l=>`<tr><td><input type="checkbox" id="l-${l.n}" aria-label="Lead ${l.n} done"></td><td><b>${l.n}</b></td><td><i class="chip" style="background:var(--${l.col})"></i>${l.lead}</td><td class="h">${hole(l.at)}</td><td>${l.to}</td></tr>`).join(''));
+const boxes=[...document.querySelectorAll('main input[type=checkbox]')];
+function prog(){const d=boxes.filter(b=>b.checked).length;$('#prog').textContent=d+' of '+boxes.length+' ticked. Ticked parts, runs and leads fade on the drawing.';}
+boxes.forEach(b=>{b.checked=!!ticks[b.id];b.addEventListener('change',()=>{if(b.checked)ticks[b.id]=1;else delete ticks[b.id];try{localStorage.setItem(KEY,JSON.stringify(ticks));}catch(e){}render();prog();});});
+prog();
+</script>
+</body>
+</html>

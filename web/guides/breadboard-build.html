@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELRS Sim RX Breadboard Build</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: breadboard map pinned on the left, staged wire-then-test checklists scrolling on the right; one column when narrow. */
+:root{
+  --bg:#eef1f3; --surface:#ffffff; --ink:#17212b; --muted:#5b6876; --rule:#d4dbe2;
+  --accent:#0b6b82; --accent-soft:#dff0f4; --warn:#a84a05; --warn-soft:#fcefdf; --ok:#1c7c45;
+  --board:#f4f0e6; --board-edge:#cdc6b4; --hole:#99937f; --part:#27303b; --part-ink:#f2f5f7; --pcb:#2f7a57; --res:#dcbf93;
+  --v5:#d02a2a; --sw:#e07a00; --tx:#17853a; --rx:#1d5bd0; --sig:#7a4fd0; --gnd:#16191f;
+  --display:"Space Grotesk","Inter",system-ui,sans-serif;
+  --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"DejaVu Sans Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#12171c; --surface:#1a2128; --ink:#e6ebf0; --muted:#97a3b0; --rule:#2e3842;
+  --accent:#5cc4dc; --accent-soft:#16323a; --warn:#f0a35a; --warn-soft:#38291a; --ok:#5fcf8f;
+  --board:#262d35; --board-edge:#3b4550; --hole:#66717d; --part:#0c1014; --part-ink:#dfe6ec; --pcb:#1f5a40; --res:#a88a5c;
+  --v5:#ff6b6b; --sw:#ffa53d; --tx:#4fd07c; --rx:#6aa2ff; --sig:#b79bff; --gnd:#d5dbe1;
+  color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#12171c; --surface:#1a2128; --ink:#e6ebf0; --muted:#97a3b0; --rule:#2e3842;
+  --accent:#5cc4dc; --accent-soft:#16323a; --warn:#f0a35a; --warn-soft:#38291a; --ok:#5fcf8f;
+  --board:#262d35; --board-edge:#3b4550; --hole:#66717d; --part:#0c1014; --part-ink:#dfe6ec; --pcb:#1f5a40; --res:#a88a5c;
+  --v5:#ff6b6b; --sw:#ffa53d; --tx:#4fd07c; --rx:#6aa2ff; --sig:#b79bff; --gnd:#d5dbe1;
+  color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1180px;margin:0 auto;padding-block:28px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:22px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(26px,4vw,36px);font-weight:700;letter-spacing:-.02em}
+h2{font-size:22px;font-weight:700;letter-spacing:-.01em}
+h3{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+p{margin:0;max-width:68ch}
+code,pre{font-family:var(--mono);font-size:.88em}
+code{background:var(--accent-soft);padding:.08em .35em;border-radius:4px;overflow-wrap:anywhere}
+a{color:var(--accent)}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;gap:16px 32px;align-items:flex-end;justify-content:space-between}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.top p{color:var(--muted);margin-top:8px}
+.prog{display:flex;flex-direction:column;gap:6px;min-width:200px}
+.prog .n{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.bar{height:6px;background:var(--rule);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--ok)}
+.linkbtn{background:none;border:0;padding:0;color:var(--muted);text-decoration:underline;font-size:12px}
+
+.stages{display:flex;flex-wrap:wrap;gap:8px}
+.stages a{display:flex;gap:8px;align-items:baseline;text-decoration:none;color:var(--ink);background:var(--surface);
+  border:1px solid var(--rule);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:500}
+.stages a span{font-family:var(--mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stages a.done{border-color:var(--ok)} .stages a.done span{color:var(--ok)}
+
+.rule{background:var(--warn-soft);border-left:3px solid var(--warn);padding:12px 16px;border-radius:0 6px 6px 0}
+.rule b{color:var(--warn)}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:28px}
+.layout>*{min-width:0}
+@media (min-width:1040px){
+  .layout{grid-template-columns:minmax(0,450px) minmax(0,1fr);align-items:start}
+  aside{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100vh - 24px);overflow:auto}
+}
+aside{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.views{display:flex;flex-wrap:wrap;gap:6px}
+.views button{background:transparent;border:1px solid var(--rule);border-radius:6px;padding:4px 10px;font-size:12.5px;font-weight:500}
+.views button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.bbwrap{overflow-x:auto}
+#bb{display:block;width:100%;min-width:400px;height:auto}
+#bb text{font-family:var(--body)}
+#bb .mono{font-family:var(--mono)}
+#bb .w{stroke-width:3.2;stroke-linecap:round}
+#bb .fly{stroke-width:2.4;stroke-linecap:round;stroke-dasharray:5 4;fill:none}
+#bb .lead{stroke:var(--ink);stroke-width:1.5;stroke-linecap:round}
+#bb .resb{fill:var(--res);stroke:var(--ink);stroke-width:1.2}
+#bb .it.off{display:none} #bb .it.dim{opacity:.25}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.chip{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.cap{font-size:12.5px;color:var(--muted)}
+
+main{display:flex;flex-direction:column;gap:36px}
+section{display:flex;flex-direction:column;gap:14px;scroll-margin-top:16px}
+.shead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:8px}
+.shead .k{font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600;margin-right:10px}
+.show{background:transparent;border:1px solid var(--rule);border-radius:6px;padding:3px 10px;font-size:12.5px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px 28px}
+.cols>div{min-width:0;display:flex;flex-direction:column;gap:8px}
+.steps{display:flex;flex-direction:column}
+.tick{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--rule);cursor:pointer}
+.tick input{width:16px;height:16px;margin:3px 0 0;accent-color:var(--ok)}
+.tick .where{display:block;font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:2px}
+.tick:has(input:checked) .body{color:var(--muted)}
+.note{padding:8px 0 8px 30px;border-bottom:1px solid var(--rule);color:var(--warn);font-weight:500}
+pre.cmd{position:relative;margin:0;background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px 70px 12px 14px;overflow-x:auto;line-height:1.6}
+pre.cmd code{background:none;padding:0;white-space:pre;overflow-wrap:normal}
+.copy{position:absolute;top:8px;right:8px;background:var(--bg);border:1px solid var(--rule);border-radius:5px;font-size:11.5px;padding:2px 8px;font-family:var(--body)}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:14px}
+.fig{background:var(--surface);border:1px solid var(--rule);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.fig svg{width:100%;height:110px}
+.fig svg text{font-family:var(--body);fill:var(--ink)}
+.fig p{font-size:13px;color:var(--muted)}
+.fig b{font-family:var(--display)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);border-bottom:1.5px solid var(--ink);padding:0 12px 6px 0}
+td{padding:8px 12px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+td:first-child{font-weight:500;min-width:150px}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">ELRS Sim RX · Phase 1a</div>
+      <h1>Breadboard build</h1>
+      <p>Four wiring stages, each tested before the next goes on, so a fault can only be in what you just added. Hole numbers refer to the map; ticks are kept in this browser.</p>
+    </div>
+    <div class="prog">
+      <div class="n"><span id="pn">0 of 0 done</span><button class="linkbtn" id="clear">Clear ticks</button></div>
+      <div class="bar"><i id="pb"></i></div>
+    </div>
+  </header>
+
+  <nav class="stages" id="nav" aria-label="Stages"></nav>
+
+  <div class="rule"><b>Unplug USB before moving any wire.</b> The RP2040's pins are 3.3 V only: nothing from a + rail may ever land in rows 1 to 9. The only + rail connections are the ones listed here.</div>
+
+  <div class="layout">
+    <aside id="board">
+      <h3>Board map</h3>
+      <div class="views" id="views" role="group" aria-label="Show build stage"></div>
+      <div class="bbwrap"><svg id="bb" viewBox="0 0 480 544" role="img" aria-label="Breadboard placement of every part and jumper"></svg></div>
+      <div class="legend">
+        <span><i class="chip" style="background:var(--v5)"></i>5 V</span>
+        <span><i class="chip" style="background:var(--sw)"></i>switched 5 V</span>
+        <span><i class="chip" style="background:var(--gnd)"></i>ground (black wire)</span>
+        <span><i class="chip" style="background:var(--tx)"></i>GP0 to receiver</span>
+        <span><i class="chip" style="background:var(--rx)"></i>receiver to GP1</span>
+        <span><i class="chip" style="background:var(--sig)"></i>control</span>
+      </div>
+      <p class="cap">Dashed lines are flying leads to the receiver and the button. Go by the red and blue lines printed on your board's rails, not by which column they are in. Everything sits in rows 1 to 27, clear of the mid-board rail break some 830-point boards have.</p>
+    </aside>
+
+    <main>
+      <section id="prep" data-nav="Prep">
+        <div class="shead"><h2><span class="k">BENCH</span>Before the breadboard</h2></div>
+        <p>Three parts need a soldering iron before they can touch a breadboard, and the receiver should be proven on its own first. You need a multimeter with a continuity beeper for the whole build.</p>
+        <div class="cols">
+          <div><h3>Solder and sort</h3><div class="steps" data-test="p1"></div></div>
+          <div><h3>Receiver and computer</h3><div class="steps" data-test="p2"></div></div>
+        </div>
+        <div class="figs">
+          <div class="fig">
+            <b>2N7000 (Q2, Q3)</b>
+            <svg viewBox="0 0 200 124">
+              <path d="M48,58 V30 a12,12 0 0 1 12,-12 h80 a12,12 0 0 1 12,12 V58 Z" fill="var(--part)"/>
+              <text x="100" y="43" text-anchor="middle" font-size="12" style="fill:var(--part-ink)">2N7000</text>
+              <g stroke="var(--muted)" stroke-width="4" stroke-linecap="round"><line x1="64" y1="60" x2="64" y2="96"/><line x1="100" y1="60" x2="100" y2="96"/><line x1="136" y1="60" x2="136" y2="96"/></g>
+              <g text-anchor="middle" font-size="13" font-weight="600"><text x="64" y="114">S</text><text x="100" y="114">G</text><text x="136" y="114">D</text></g>
+            </svg>
+            <p>Flat printed face toward you, legs down: source, gate, drain. On the map both sit with the flat face toward the left edge.</p>
+          </div>
+          <div class="fig">
+            <b>AO3401A (Q1), top view</b>
+            <svg viewBox="0 0 200 124">
+              <g fill="var(--muted)"><rect x="64" y="74" width="16" height="18"/><rect x="120" y="74" width="16" height="18"/><rect x="92" y="20" width="16" height="18"/></g>
+              <rect x="52" y="36" width="96" height="40" rx="4" fill="var(--part)"/>
+              <text x="100" y="61" text-anchor="middle" font-size="12" style="fill:var(--part-ink)">A19T</text>
+              <g text-anchor="middle" font-size="13" font-weight="600"><text x="72" y="108">1 · G</text><text x="128" y="108">2 · S</text><text x="100" y="14">3 · D</text></g>
+            </svg>
+            <p>Two legs on one side are gate and source. The single leg opposite is drain.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="stage-1" data-nav="1 Module" data-view="1">
+        <div class="shead"><h2><span class="k">STAGE 1</span>RP2040-Zero alone</h2><button class="show" data-show="1">Show on map</button></div>
+        <p>Proves the firmware, USB and the whole update loop before anything else is connected. With no receiver the firmware reports failsafe, and that is the correct result here.</p>
+        <div class="cols">
+          <div><h3>Wire</h3><div class="steps" data-wire="1"></div></div>
+          <div><h3>Test</h3><div class="steps" data-test="t1"></div></div>
+        </div>
+        <pre class="cmd"><code>tools/build.sh                              # on the build machine: build the firmware
+tools/serve.sh                              # on the build machine: serve page and firmware, leave running
+https://&lt;build-machine&gt;:8443/                # in Chrome or Edge, on the PC the dongle is plugged into   
+joy.cpl                              # on Windows, Win+R: game controller test</code></pre>
+      </section>
+
+      <section id="stage-2" data-nav="2 Button + ring" data-view="2">
+        <div class="shead"><h2><span class="k">STAGE 2</span>Button and LED ring</h2><button class="show" data-show="2">Show on map</button></div>
+        <p>Q3 switches the ring from 5 V because a GPIO can neither supply 5 V nor survive it. The button needs no resistor; the firmware turns on a pull-up on GP3.</p>
+        <div class="cols">
+          <div><h3>Wire</h3><div class="steps" data-wire="2"></div></div>
+          <div><h3>Test</h3><div class="steps" data-test="t2"></div></div>
+        </div>
+      </section>
+
+      <section id="stage-3" data-nav="3 Receiver" data-view="3">
+        <div class="shead"><h2><span class="k">STAGE 3</span>Receiver on direct 5 V</h2><button class="show" data-show="3">Show on map</button></div>
+        <p>The receiver runs straight from the + rail for this stage, so the serial link is tested without the power switch in the way. The orange link is the only temporary wire in the build.</p>
+        <div class="cols">
+          <div><h3>Wire</h3><div class="steps" data-wire="3"></div></div>
+          <div><h3>Test</h3><div class="steps" data-test="t3"></div></div>
+        </div>
+      </section>
+
+      <section id="stage-4" data-nav="4 Power switch" data-view="4">
+        <div class="shead"><h2><span class="k">STAGE 4</span>Receiver power switch</h2><button class="show" data-show="4">Show on map</button></div>
+        <p>Q1 sits in the receiver's 5 V feed. R1 holds it off until GP2 goes high and Q2 pulls its gate to ground, so the receiver stays dark until the firmware asks for it.</p>
+        <div class="cols">
+          <div><h3>Wire</h3><div class="steps" data-wire="4"></div></div>
+          <div><h3>Test</h3><div class="steps" data-test="t4"></div></div>
+        </div>
+      </section>
+
+      <section id="stage-5" data-nav="5 Bind + soak">
+        <div class="shead"><h2><span class="k">STAGE 5</span>Bind, passthrough and soak</h2></div>
+        <p>No new wiring. These exercise the receiver commands and then leave the board running. Write the results into <code>docs/BRINGUP.md</code> as you go and commit it.</p>
+        <div class="cols">
+          <div><h3>Bind and passthrough</h3><div class="steps" data-test="t5"></div></div>
+          <div><h3>Soak</h3><div class="steps" data-test="t6"></div></div>
+        </div>
+      </section>
+
+      <section id="faults" data-nav="Faults">
+        <div class="shead"><h2><span class="k">REFERENCE</span>When something is wrong</h2></div>
+        <div class="tw"><table>
+          <tr><th>Symptom</th><th>Look at</th></tr>
+          <tr><td>No USB device at all</td><td>Charge-only cable. Then hold BOOT while plugging in: if <code>RPI-RP2</code> appears the board is fine and needs flashing.</td></tr>
+          <tr><td>Web page cannot see the port</td><td>Chrome or Edge only, on the HTTPS address. Close anything else holding the COM port, such as PuTTY or a second tab.</td></tr>
+          <tr><td>USB picker is empty when flashing from the page</td><td>WinUSB is not bound yet: Device Manager shows RP2 Boot with a warning icon. Do the Zadig step, or copy the UF2 to the drive by hand.</td></tr>
+          <tr><td>Ring never lights</td><td>LED leads reversed. Q3 the wrong way round. A PN2222 from the kit in place of a 2N7000. A 2N7000 that is weak at 3.3 V gate drive: swap in another from the pack.</td></tr>
+          <tr><td>Ring always on</td><td>Q3 source and drain swapped; its body diode then conducts regardless of GP4.</td></tr>
+          <tr><td><code>frames_ok</code> stays 0, <code>frames_crc_err</code> or <code>uart_overruns</code> climb</td><td>Swap the green and blue leads (h1 and h2).</td></tr>
+          <tr><td>No frames at all, ring on fast flicker</td><td>Receiver unpowered, or in WiFi mode: it goes there by itself after about 60 s without a radio link. <code>rxpower off</code> then <code>rxpower on</code>.</td></tr>
+          <tr><td>Stage 4: receiver never powers</td><td>Measure Q1 gate (row 15) to ground: about 5 V when off, near 0 V when on. Stuck at 5 V means Q2 or its wiring. Correct gate but no output means Q1's pins are not where you think; trace the adapter again.</td></tr>
+          <tr><td>Stage 4: receiver stays on after <code>rxpower off</code></td><td>Q1 source and drain swapped (its body diode feeds the receiver), or R1 missing.</td></tr>
+          <tr><td>USB drops when the receiver switches on</td><td>Inrush into C1. This is one of the open questions in <code>docs/BRINGUP.md</code>; note what you see.</td></tr>
+          <tr><td>Channels 15 and 16 wander</td><td>Hybrid or Wide switch mode puts LQ and RSSI there. Use Full Res 16ch or set buttons 30 to 35 to none.</td></tr>
+        </table></div>
+        <h3 style="margin-top:8px">What the ring is telling you</h3>
+        <div class="tw"><table>
+          <tr><th>Ring</th><th><code>led</code> in status</th><th>Meaning</th></tr>
+          <tr><td>Off</td><td>off</td><td>Receiver power is off</td></tr>
+          <tr><td>Solid</td><td>connected</td><td>Channel frames arriving</td></tr>
+          <tr><td>Slow blink, 0.5 s</td><td>disconnected</td><td>Receiver running, no radio</td></tr>
+          <tr><td>Double blink</td><td>binding</td><td>Bind requested, for up to 60 s</td></tr>
+          <tr><td>Fast flicker</td><td>wifi</td><td>No frames for 30 s, or 10 s after power-up if none were ever seen: receiver in WiFi mode, absent or dead</td></tr>
+          <tr><td>Blip then two flickers</td><td>serial update</td><td>Passthrough flashing in progress</td></tr>
+        </table></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+/*LAYOUT*/
+const X={'L+':38,'L-':56,a:92,b:110,c:128,d:146,e:164,f:218,g:236,h:254,i:272,j:290,'R-':326,'R+':344};
+const Y=r=>40+(r-1)*18;
+function pos(h){const m=/^([LR][+-])@(\d+)$/.exec(h)||/^([a-j])(\d+)$/.exec(h);return {x:X[m[1]],y:Y(+m[2]),col:m[1],row:+m[2]};}
+function node(h){const p=pos(h);return p.col.length===2?p.col:('abcde'.includes(p.col)?'L':'R')+p.row;}
+const ITEMS=[
+ {id:'U1',st:1,kind:'mcu',what:'Seat the RP2040-Zero across the centre channel, USB-C overhanging the row 1 end',where:'left pins c1 to c9, right pins g1 to g9, back row in row 10',
+  pins:{'5V':'c1',GND:'c2',GP0:'g1',GP1:'g2',GP2:'g3',GP3:'g4',GP4:'g5'}},
+ {id:'W1',st:1,kind:'wire',col:'v5',a:'a1',b:'L+@1',what:'U1 5V to the + rail'},
+ {id:'W2',st:1,kind:'wire',col:'gnd',a:'a2',b:'L-@2',what:'U1 GND to the − rail'},
+ {id:'W3',st:1,kind:'wire',col:'v5',a:'L+@25',b:'R+@25',what:'Join the two + rails'},
+ {id:'W4',st:1,kind:'wire',col:'gnd',a:'L-@26',b:'R-@26',what:'Join the two − rails'},
+
+ {id:'N2',st:2,kind:'note',what:'First confirm the ring polarity: with USB in, hold green on the + rail and black on the − rail. The ring should light. If it stays dark, swap them and treat black as + in the steps below. Trying it backwards does no harm. Unplug again.'},
+ {id:'Q3',st:2,kind:'to92',what:'Q3, a 2N7000, flat face toward the centre channel',pins:{S:'g16',G:'g17',D:'g18'},lab:[227,297]},
+ {id:'W5',st:2,kind:'wire',col:'sig',a:'h5',b:'h14',what:'GP4 down to row 14'},
+ {id:'R4',st:2,kind:'res',val:'100 Ω',what:'R4 100 Ω, in series to Q3 gate',pins:{a:'i14',b:'i17'},lab:[262,304,'end']},
+ {id:'R5',st:2,kind:'res',val:'100 kΩ',what:'R5 100 kΩ, Q3 gate to the − rail',pins:{a:'j17',b:'R-@17'},lab:[308,341]},
+ {id:'W6',st:2,kind:'wire',col:'gnd',a:'j16',b:'R-@16',what:'Q3 source to the − rail'},
+ {id:'F1',st:2,kind:'fly',col:'sig',a:'j4',tag:'SW1 brown',what:'One brown switch lead to GP3',pins:{'SW1.A':'j4'}},
+ {id:'F2',st:2,kind:'fly',col:'gnd',a:'R-@6',tag:'SW1 brown',what:'Other brown switch lead to the − rail',pins:{'SW1.B':'R-@6'}},
+ {id:'F3',st:2,kind:'fly',col:'v5',a:'R+@8',tag:'SW1 green (LED +)',what:'Green LED lead (+) to the + rail (no resistor, one is built in)',pins:{'SW1.LED+':'R+@8'}},
+ {id:'F4',st:2,kind:'fly',col:'sig',a:'j18',tag:'SW1 black (LED −)',what:'Black LED lead (−) to Q3 drain',pins:{'SW1.LED-':'j18'}},
+
+ {id:'C1',st:3,kind:'cap',what:'C1 10 µF electrolytic, striped (−) leg in row 21',where:'+ g20, − g21',pins:{'+':'g20','-':'g21'},lab:[236,421]},
+ {id:'C2',st:3,kind:'cer',what:'C2 100 nF ceramic, either way round',pins:{a:'i20',b:'i21'},lab:[272,421]},
+ {id:'W7',st:3,kind:'wire',col:'gnd',a:'j21',b:'R-@21',what:'Row 21 to the − rail'},
+ {id:'W8',st:3,only:3,kind:'wire',col:'sw',a:'f20',b:'L+@20',what:'Orange link from row 20 to the + rail. Temporary: it moves in stage 4'},
+ {id:'F7',st:3,kind:'fly',col:'sw',a:'j20',tag:'EP2 5V pad',what:'Receiver red lead (5V pad)',pins:{'EP2.5V':'j20'}},
+ {id:'F8',st:3,kind:'fly',col:'gnd',a:'R-@23',tag:'EP2 GND pad',what:'Receiver black lead (GND pad) to the − rail',pins:{'EP2.GND':'R-@23'}},
+ {id:'F5',st:3,kind:'fly',col:'tx',a:'h1',tag:'EP2 RX pad',what:'Receiver green lead (RX pad) to GP0',pins:{'EP2.RX':'h1'}},
+ {id:'F6',st:3,kind:'fly',col:'rx',a:'h2',tag:'EP2 TX pad',what:'Receiver blue lead (TX pad) to GP1',pins:{'EP2.TX':'h2'}},
+
+ {id:'Q1',st:4,kind:'sot',what:'Q1 on its adapter, turned so header pin 1 is at row 15. The header runs 1, 3, 2: pin 1 (gate) in row 15, pin 3 (drain) in row 16, pin 2 (source) in row 17',pins:{G:'d15',D:'d16',S:'d17'},lab:[182,313]},
+ {id:'W12',st:4,kind:'wire',col:'v5',a:'a17',b:'L+@17',what:'Q1 source (row 17) to the + rail'},
+ {id:'R1',st:4,kind:'res',val:'10 kΩ',what:'R1 10 kΩ, Q1 gate up to the + rail',pins:{a:'a15',b:'L+@15'},lab:[72,284]},
+ {id:'Q2',st:4,kind:'to92',what:'Q2, a 2N7000, flat face toward the left rails',pins:{S:'d11',G:'d12',D:'d13'},lab:[137,277]},
+ {id:'W10',st:4,kind:'wire',col:'gnd',a:'a11',b:'L-@11',what:'Q2 source to the − rail'},
+ {id:'R3',st:4,kind:'res',val:'100 kΩ',what:'R3 100 kΩ, Q2 gate to the − rail',pins:{a:'a12',b:'L-@12'},lab:[74,252]},
+ {id:'W11',st:4,kind:'wire',col:'sig',a:'b13',b:'b15',what:'Q2 drain to Q1 gate'},
+ {id:'W9',st:4,kind:'wire',col:'sig',a:'i3',b:'i12',what:'GP2 down to row 12'},
+ {id:'R2',st:4,kind:'res',val:'100 Ω',what:'R2 100 Ω, across the channel to Q2 gate',pins:{a:'g12',b:'e12'},lab:[200,230]},
+ {id:'W13',st:4,kind:'wire',col:'sw',a:'e16',b:'f20',what:'Move the orange link: pull its end out of the + rail and put it in e16 (Q1 drain). The f20 end stays'},
+];
+const NETS={
+ V5:['U1.5V','Q1.S','R1.b','SW1.LED+'],
+ GND:['U1.GND','Q2.S','Q3.S','R3.b','R5.b','C1.-','C2.b','EP2.GND','SW1.B'],
+ GP0:['U1.GP0','EP2.RX'], GP1:['U1.GP1','EP2.TX'],
+ GP2:['U1.GP2','R2.a'], Q2G:['R2.b','Q2.G','R3.a'], Q1G:['Q2.D','Q1.G','R1.a'],
+ SW5:['Q1.D','C1.+','C2.a','EP2.5V'],
+ GP3:['U1.GP3','SW1.A'], GP4:['U1.GP4','R4.a'], Q3G:['R4.b','Q3.G','R5.a'], LEDN:['Q3.D','SW1.LED-'],
+};
+const visible=(it,v)=>it.st<=v&&(!it.only||it.only===v);
+/*END*/
+
+const T={
+p1:[
+ ['ep2','<b>EP2 leads.</b> Solder four leads to the pads, by the printed labels and not by position: red 5V, black GND, green RX, blue TX. Thin silicone wire will not hold in a breadboard, so cut two M-M jumpers in half and solder the cut ends to the pads.'],
+ ['ep2i','Sleeve the receiver in heat shrink or tape so it cannot short on anything. Leave its LED visible; you will compare it with the ring.'],
+ ['q1','<b>AO3401A.</b> Solder it to a SOT-23 adapter and fit three header pins. On the adapter used for the prototype, <b>pin 1 is gate, pin 2 is source, pin 3 is drain</b>, and the header pins are not in number order: they run 2, 3, 1. Check yours the same way.'],
+ ['q1b','<b>Confirming Q1 with the meter</b> (the traces already show the mapping; this proves the solder joints)<b>.</b> Set the multimeter to continuity (the sound-wave symbol) and touch the probes together to hear the beep. Look at the MOSFET from above with the two-leg side toward you: left leg is gate, right leg is source, the single leg on the far side is drain. Hold one probe on the gate leg itself, not the pad, and touch the other to each header pin until it beeps. Write G by that pin. Repeat for source and drain.'],
+ ['q1c','Each leg must beep to exactly one header pin, and no two header pins may beep to each other. A steady beep between two pins is a solder bridge. A brief chirp or a reading near 0.5 between source and drain in one direction only is the MOSFET\'s internal diode and is normal.'],
+ ['sw','<b>Button.</b> On the prototype's button the two brown leads are the switch (either way round), and green and black are the LED, green being +. Another batch may differ: the pair that beeps only while pressed is the switch. The leads are stranded: tin the ends, or push M-M jumpers into the plug.'],
+ ['fets','<b>2N7000s.</b> Take two 2N7000s and check the print. Leave the kit transistors (PN2222, same package) in the box.'],
+ ['res','<b>From the kit:</b> the breadboard, jumpers, five resistors and two capacitors (10 µF electrolytic, 100 nF ceramic, usually marked 104). Measure the resistors instead of trusting the bands: 100 Ω ×2, 10 kΩ ×1, 100 kΩ ×2.'],
+ ['bands','<b>Resistor bands</b>, five-band (four-band in brackets), before the tolerance band. 100 Ω: brown, black, black, black (brown, black, brown). 10 kΩ: brown, black, black, red (brown, black, orange). 100 kΩ: brown, black, black, orange (brown, black, yellow).'],
+ ['hdr','<b>Module back row.</b> If your RP2040-Zero has pins on the five back pads (13 to 9): on the breadboard, 13 and 12 share the left strip of row 10, 9 lands on the right, and 11 and 10 sit over the centre channel where there are no holes. Try seating the module: if it will not go flush, clip the 11 and 10 pins on the board you use here. The firmware uses none of the five, and row 10 is left empty on the map.'],
+ ['mb','Leave the kit\'s MB102 power module off the board. Everything runs from USB.'],
+],
+p2:[
+ ['rp3','<b>Using a RadioMaster RP3 instead of an EP2.</b> Wiring and tests are identical: read every EP2 label here as the same pad on the RP3. Fit both antennas before it gets power, since it transmits telemetry through a power amplifier. In the Web Flasher pick the RadioMaster RP3 2.4GHz RX target, not the EP2 one.'],
+ ['rxfw','Power the EP2 from a plain 5 V supply. Join its WiFi hotspot (password <code>expresslrs</code>, page at 10.0.0.1) and update it to the same ExpressLRS major version as your TX module. Reading receiver settings from the dongle needs 4.0 or newer on the receiver.'],
+ ['rxbind','Bind it to the radio the normal way and see its LED go solid. Now "the receiver works" is known before the dongle is involved.'],
+ ['build','<b>On the build machine:</b> <code>tools/build.sh</code>, then <code>tools/serve.sh</code>, left running. It serves the config page and the latest firmware to the PC the dongle is plugged into, at <code>https://&lt;build-machine&gt;:8443/</code>.'],
+ ['win','<b>On Windows:</b> open that address in Chrome or Edge and accept the self-signed certificate warning once. The dongle itself needs no drivers; the one driver step (Zadig) comes at the end of stage 1.'],
+],
+t1:[
+ ['short','USB still unplugged: continuity from + rail to − rail does <b>not</b> beep.'],
+ ['boot','Hold BOOT and plug in. A drive named <code>RPI-RP2</code> appears.'],
+ ['pico','Open <code>INFO_UF2.TXT</code> on the drive: it should say Raspberry Pi RP2. Logging the flash chip needs picotool on the VM with the USB device passed through from Proxmox; leave that for later.'],
+ ['flash','On the config page's Dongle firmware tab: download the UF2 and copy it onto the <code>RPI-RP2</code> drive in Explorer. The drive disappears and the board reboots.'],
+ ['v5','Meter across the rails: 4.75 to 5.25 V.'],
+ ['enum','Device Manager shows a game controller under Human Interface Devices and a new COM port under Ports, with no warning icons.'],
+ ['joy','Win+R, <code>joy.cpl</code>, Properties: sticks centred, Z (throttle) at minimum. That dialog may show only the first 32 of the 36 buttons; the config page shows all of them.'],
+ ['status','On the web page click Connect and pick the dongle. Open the Console tab and type <code>status</code>: <code>rx_power: true</code>, <code>link: false</code>, <code>failsafe: true</code>, and <code>led: "disconnected"</code> turning to <code>"wifi"</code> about 10 s after plug-in.'],
+ ['rxp','<code>rxpower off</code> then <code>status</code>: <code>rx_power: false</code>, <code>led: "off"</code>. <code>rxpower on</code> restores it.'],
+ ['web','On the page itself: status fills in, all channels read 992, the mapping table renders.'],
+ ['zadig','<b>Optional</b>, only if you want to flash straight from the page. One-time driver: click Enter update mode on the page so <code>RPI-RP2</code> appears. Run Zadig, Options, List All Devices, pick <b>RP2 Boot (Interface 1)</b>, not Interface 0, set the target to WinUSB, Install Driver. Unplug and replug.'],
+ ['dfu','Click Enter update mode: <code>RPI-RP2</code> appears without touching BOOT. Flash again, either by copying the UF2 onto the drive or, if you did the Zadig step, with Select device and flash.'],
+],
+t2:[
+ ['short','USB unplugged: + rail to − rail still does not beep.'],
+ ['q3','Q3 legs read source, gate, drain going down rows 16, 17, 18.'],
+ ['flick','Plug in. The ring blinks slowly for 10 s, then shows the fast flicker (<code>led: "wifi"</code>): receiver power is on and there is no receiver.'],
+ ['dark','<code>rxpower off</code>: ring goes dark. <code>rxpower on</code>: flicker returns.'],
+ ['press','Short press toggles receiver power. Watch both <code>status</code> and the ring.'],
+ ['long','Hold for 1.5 s: <code>led: "binding"</code>, double blink, for up to 60 s.'],
+],
+t3:[
+ ['pol','USB unplugged: red receiver lead is in row 20, black is in the − rail. Reversed power kills the receiver.'],
+ ['c1','C1 stripe is in row 21. + rail to − rail does not beep.'],
+ ['off','Plug in with the radio off: <code>link: false</code>, <code>led: "disconnected"</code>, slow blink, and <code>frames_ok</code> climbing slowly. On ExpressLRS 3.x it climbs two at a time, a few seconds apart.'],
+ ['on','Radio on: <code>link: true</code>, <code>failsafe: false</code>, ring solid. <code>frames_ok</code> and <code>reports_sent</code> climb at the packet rate, <code>reports_dropped</code> near zero, <code>last_rc_age_ms</code> small.'],
+ ['bars','Web page channel bars follow the sticks with full travel, −32767 to 32767 at the endpoints after radio calibration. Switches light the expected buttons.'],
+ ['sim','OS joystick tester agrees. Then a sim: the controller is seen, axes map, full range, no jitter at centre.'],
+ ['fs','Radio off while watching the tester: within about 100 ms sticks centre and throttle drops, <code>failsafe: true</code>. Radio on: control returns.'],
+ ['rate','Change packet rate on the radio (250 Hz to 500 Hz): <code>rfmode</code> changes and the report rate follows.'],
+],
+t4:[
+ ['short','USB unplugged: + rail to − rail does not beep, and the orange link is in e16, not the + rail.'],
+ ['hold','Hold BOOT and plug in. The receiver LED stays dark: with no firmware running, R3 and R1 keep it off. Release, replug normally, and it boots.'],
+ ['offv','<code>rxpower off</code>: receiver LED dark, <code>frames_ok</code> stops. Row 20 to ground reads about 0 V.'],
+ ['back','Still off: rows 1 and 2 on the right (GP0, GP1) read about 0 V to ground. Nothing is back-powering the receiver through its serial pins.'],
+ ['onv','<code>rxpower on</code>: receiver boots and the link returns within about 2 s.'],
+ ['btn','A short press on the button does the same.'],
+ ['drop','With the receiver on, + rail to row 20 reads under 100 mV.'],
+],
+t5:[
+ ['bind','Unbind the receiver, then <code>bind</code> or a long press: receiver LED double-blinks, the radio\'s ELRS Lua Bind completes it, link comes up.'],
+ ['mm','Model match on in the Lua: <code>modelmatch &lt;wrong n&gt;</code> stops the channels (<code>link: false</code>, then <code>led: "wifi"</code> after 30 s of silence); the right number brings them back. Power-cycle the receiver and confirm it stuck.'],
+ ['info','Receiver on 4.0 or newer: <code>rxinfo</code> returns name, version and field count, and the page\'s Load from receiver matches the Lua. On 3.x expect "no reply".'],
+ ['cycle','<code>bindcycle</code>: the receiver LED goes through three boots and ends in bind mode.'],
+ ['pass','ExpressLRS Web Flasher, target HappyModel EP 2.4GHz RX, method Betaflight passthrough, the dongle\'s serial port. Switch the radio off first and disconnect the config page so the COM port is free. The flash completes, and about 10 s later the dongle leaves passthrough by itself. ExpressLRS Configurator with the Betaflight passthrough method works the same way.'],
+ ['bl','<code>rxbootloader</code>: receiver LED pattern changes. <code>rxpower off</code> and <code>on</code> recovers it.'],
+],
+t6:[
+ ['soak','30 minutes with the radio on: <code>frames_crc_err</code>, <code>frames_timeout</code>, <code>uart_overruns</code> and <code>reports_dropped</code> stay low and flat. No USB disconnect sounds and nothing dropping out of Device Manager.'],
+ ['replug','Unplug and replug five times: enumerates every time and the <code>rxboot</code> setting is respected.'],
+ ['save','Change a mapping, <code>save</code>, replug: <code>map</code> shows it persisted.'],
+],
+};
+
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const fmt=h=>{const p=pos(h);return p.col.length===2?(p.col[0]==='L'?'left ':'right ')+(p.col[1]==='+'?'+':'−')+' rail':h;};
+function where(it){
+  if(it.where) return it.where;
+  if(it.kind==='wire') return fmt(it.a)+' → '+fmt(it.b);
+  if(it.kind==='fly') return 'into '+fmt(it.a);
+  if(it.kind==='res'||it.kind==='cer'){const v=Object.values(it.pins);return fmt(v[0])+' ↔ '+fmt(v[1]);}
+  if(it.pins) return Object.entries(it.pins).map(([k,v])=>k+' '+v).join(' · ');
+  return '';
+}
+const tick=(id,html,w,col)=>`<label class="tick"><input type="checkbox" id="${id}"><span class="body">${col?`<i class="chip" style="background:var(--${col})"></i>`:''}${html}${w?`<span class="where">${w}</span>`:''}</span></label>`;
+
+$$('[data-wire]').forEach(el=>{const st=+el.dataset.wire;
+  el.innerHTML=ITEMS.filter(i=>i.st===st).map(i=>i.kind==='note'?`<div class="note">${i.what}</div>`:tick('w-'+i.id,i.what,where(i),i.col)).join('');});
+$$('[data-test]').forEach(el=>{const k=el.dataset.test;el.innerHTML=T[k].map(([id,h])=>tick(k+'-'+id,h)).join('');});
+
+/* ---------- breadboard map ---------- */
+const dot=(p,c)=>`<circle cx="${p.x}" cy="${p.y}" r="3.6" fill="var(--${c})"/>`;
+const label=(it,t)=>it.lab?`<text x="${it.lab[0]}" y="${it.lab[1]}" text-anchor="${it.lab[2]||'middle'}" font-size="9.5" font-weight="600" fill="var(--ink)">${t}</text>`:'';
+function draw(it){
+  const P=it.pins?Object.values(it.pins).map(pos):[];
+  if(it.kind==='wire'){const a=pos(it.a),b=pos(it.b);
+    return `<line class="w" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="var(--${it.col})"/>`+dot(a,it.col)+dot(b,it.col);}
+  if(it.kind==='fly'){const a=pos(it.a);
+    return `<line class="fly" x1="${a.x}" y1="${a.y}" x2="366" y2="${a.y}" stroke="var(--${it.col})"/>`+dot(a,it.col)+
+      `<text x="372" y="${a.y+3.5}" font-size="9.5" fill="var(--ink)">${it.tag}</text>`;}
+  if(it.kind==='res'){const [a,b]=P,mx=(a.x+b.x)/2,my=(a.y+b.y)/2,ang=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI,len=Math.min(22,Math.hypot(b.x-a.x,b.y-a.y)-14);
+    return `<line class="lead" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/><rect class="resb" x="${mx-len/2}" y="${my-4.5}" width="${len}" height="9" rx="2.5" transform="rotate(${ang} ${mx} ${my})"/>`+dot(a,'ink')+dot(b,'ink')+label(it,it.id);}
+  if(it.kind==='cap'){const [a,b]=P;
+    return `<circle cx="${a.x}" cy="${(a.y+b.y)/2}" r="12" fill="var(--part)"/><path d="M${a.x-11},${b.y-4} a12,12 0 0 0 22,0 z" fill="var(--part-ink)" opacity=".4"/>`+dot(a,'part-ink')+dot(b,'part-ink')+
+      `<text x="${a.x+13}" y="${a.y-4}" font-size="11" font-weight="600" fill="var(--ink)">+</text>`+label(it,it.id);}
+  if(it.kind==='cer'){const [a,b]=P;
+    return `<rect class="resb" x="${a.x-5.5}" y="${a.y-5}" width="11" height="${b.y-a.y+10}" rx="5"/>`+dot(a,'ink')+dot(b,'ink')+label(it,it.id);}
+  if(it.kind==='to92'||it.kind==='sot'){const top=P[0],bot=P[2],x0=top.x-27,sot=it.kind==='sot';
+    let s=`<rect x="${x0}" y="${top.y-9}" width="36" height="${bot.y-top.y+18}" rx="${sot?2:7}" fill="var(--${sot?'pcb':'part'})"/>`;
+    if(!sot) s+=`<line x1="${x0+1}" y1="${top.y-9}" x2="${x0+1}" y2="${bot.y+9}" stroke="var(--part-ink)" stroke-width="2.4"/>`;
+    Object.entries(it.pins).forEach(([k,h])=>{const p=pos(h);s+=`<text x="${p.x-16}" y="${p.y+3.5}" text-anchor="middle" font-size="9.5" font-weight="600" fill="var(--part-ink)">${k}</text>`+dot(p,'part-ink');});
+    return s+label(it,it.id);}
+  if(it.kind==='mcu'){
+    let s=`<rect x="164" y="3" width="36" height="30" rx="4" fill="var(--hole)"/><text x="182" y="15" text-anchor="middle" font-size="7.5" fill="var(--part-ink)">USB-C</text>`+
+      `<rect x="116" y="${Y(1)-10}" width="132" height="${Y(10)-Y(1)+20}" rx="6" fill="var(--part)"/>`+
+      `<text x="182" y="${Y(7)}" text-anchor="middle" font-size="10" font-weight="600" fill="var(--part-ink)">U1</text><text x="182" y="${Y(8)-4}" text-anchor="middle" font-size="8.5" fill="var(--part-ink)">RP2040-Zero</text>`;
+    [X.d,X.e,182,200,X.f].forEach(x=>{s+=`<rect x="${x-3}" y="${Y(10)-3}" width="6" height="6" fill="var(--part-ink)" opacity=".45"/>`;});
+    for(let r=1;r<=9;r++) s+=`<rect x="${X.c-3}" y="${Y(r)-3}" width="6" height="6" fill="var(--part-ink)" opacity=".45"/><rect x="${X.g-3}" y="${Y(r)-3}" width="6" height="6" fill="var(--part-ink)" opacity=".45"/>`;
+    Object.entries(it.pins).forEach(([k,h])=>{const p=pos(h),l=p.col==='c';
+      s+=`<text x="${p.x+(l?8:-8)}" y="${p.y+3.5}" text-anchor="${l?'start':'end'}" font-size="9" font-weight="600" fill="var(--part-ink)">${k}</text>`;});
+    return s;}
+  return '';
+}
+(function board(){
+  let s=`<rect x="24" y="8" width="334" height="530" rx="8" fill="var(--board)" stroke="var(--board-edge)"/>`;
+  [['L+',-9,'v5','+'],['L-',9,'rx','−'],['R-',-9,'rx','−'],['R+',9,'v5','+']].forEach(([k,dx,c,t])=>{
+    s+=`<line x1="${X[k]+dx}" y1="${Y(1)-6}" x2="${X[k]+dx}" y2="${Y(27)+6}" stroke="var(--${c})" stroke-width="1.2" opacity=".7"/>`+
+       `<text x="${X[k]}" y="26" text-anchor="middle" font-size="11" font-weight="600" fill="var(--${c})">${t}</text>`;});
+  for(let r=1;r<=27;r++){
+    s+=`<text class="mono" x="12" y="${Y(r)+3}" text-anchor="middle" font-size="8" fill="var(--muted)">${r}</text>`;
+    for(const k in X) s+=`<circle cx="${X[k]}" cy="${Y(r)}" r="2.3" fill="var(--hole)"/>`;}
+  'abcdefghij'.split('').forEach(k=>{s+=`<text class="mono" x="${X[k]}" y="530" text-anchor="middle" font-size="8.5" fill="var(--muted)">${k}</text>`;});
+  const order={mcu:0,wire:1,fly:1,res:2,cap:3,cer:3,to92:3,sot:3};
+  ITEMS.filter(i=>i.kind!=='note').sort((a,b)=>order[a.kind]-order[b.kind]).forEach(it=>{
+    s+=`<g class="it" data-st="${it.st}" data-only="${it.only||''}">${draw(it)}</g>`;});
+  $('#bb').innerHTML=s;
+})();
+const VIEWS=[[1,'1 Module'],[2,'2 Button'],[3,'3 Receiver'],[4,'4 Switch'],[5,'Finished']];
+$('#views').innerHTML=VIEWS.map(([v,t])=>`<button data-v="${v}" aria-pressed="false">${t}</button>`).join('');
+function setView(v){
+  $$('#bb .it').forEach(g=>{const it={st:+g.dataset.st,only:+g.dataset.only||0};
+    g.classList.toggle('off',!visible(it,v));g.classList.toggle('dim',v<5&&it.st<v);});
+  $$('#views button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===v)));
+}
+$('#views').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setView(+b.dataset.v);});
+$$('.show').forEach(b=>b.addEventListener('click',()=>{setView(+b.dataset.show);
+  if(!matchMedia('(min-width:1040px)').matches) $('#board').scrollIntoView({block:'start'});}));
+setView(5);
+
+/* ---------- ticks ---------- */
+const KEY='elrs-sim-rx-breadboard-ticks';
+let ticks={};try{ticks=JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){}
+const secs=$$('main section');
+$('#nav').innerHTML=secs.map(s=>`<a href="#${s.id}" data-for="${s.id}">${s.dataset.nav}<span></span></a>`).join('');
+function refresh(){
+  let done=0,all=0;
+  secs.forEach(s=>{const b=$$('input[type=checkbox]',s),d=b.filter(x=>x.checked).length;done+=d;all+=b.length;
+    const a=$(`#nav a[data-for="${s.id}"]`);a.querySelector('span').textContent=b.length?d+'/'+b.length:'';a.classList.toggle('done',b.length>0&&d===b.length);});
+  $('#pn').textContent=done+' of '+all+' done';$('#pb').style.width=(all?100*done/all:0)+'%';
+}
+$$('input[type=checkbox]').forEach(b=>{b.checked=!!ticks[b.id];
+  b.addEventListener('change',()=>{if(b.checked)ticks[b.id]=1;else delete ticks[b.id];try{localStorage.setItem(KEY,JSON.stringify(ticks));}catch(e){}refresh();});});
+refresh();
+const clr=$('#clear');let armed=0;
+clr.addEventListener('click',()=>{
+  if(!armed){armed=1;clr.textContent='Clear all ticks? Click again';setTimeout(()=>{armed=0;clr.textContent='Clear ticks';},3000);return;}
+  ticks={};try{localStorage.removeItem(KEY);}catch(e){}$$('input[type=checkbox]').forEach(b=>b.checked=false);armed=0;clr.textContent='Clear ticks';refresh();});
+
+/* ---------- copy ---------- */
+$$('pre.cmd').forEach(p=>{const code=p.querySelector('code'),b=document.createElement('button');b.className='copy';b.textContent='Copy';
+  b.addEventListener('click',()=>{const done=()=>{b.textContent='Copied';setTimeout(()=>b.textContent='Copy',1200);};
+    const sel=()=>{const r=document.createRange();r.selectNodeContents(code);const s=getSelection();s.removeAllRanges();s.addRange(r);};
+    try{navigator.clipboard.writeText(code.textContent).then(done).catch(sel);}catch(e){sel();}});
+  p.appendChild(b);});
+</script>
+</body>
+</html>

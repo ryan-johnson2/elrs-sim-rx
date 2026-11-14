@@ -24,7 +24,8 @@ checks, and the status table below says which.
 | Configuration page | In use; the four-tab layout, profiles and one-click update are tested against a simulated device only |
 | Prototype hardware (breadboard, then perfboard) | Built and working |
 | Carrier PCB v0.2 | Ordered, not yet received or tested |
-| Carrier case | Designed and checked for overlaps in CAD; not printed yet |
+| Integrated PCB with the RP2040 on board | Draft: placed, not routed |
+| Printed cases | Designed and checked for overlaps in CAD; not confirmed on a printer |
 | Hosting on GitHub Pages, release and development builds | Workflow written, never run |
 
 ## What it does
@@ -46,21 +47,20 @@ checks, and the status table below says which.
 
 ## Hardware
 
-The current hardware is a small carrier PCB: the fab fits the power switch and LED driver, and
-an RP2040-Zero module, the receiver and the button leads are soldered on by hand.
-**[docs/HARDWARE.md](docs/HARDWARE.md)** is the index.
+There are three generations of the same circuit: a hand-built prototype, a carrier PCB that
+takes an RP2040-Zero module, and a draft board with the RP2040 itself fitted.
+**[docs/HARDWARE.md](docs/HARDWARE.md)** is the index, with the state of each.
 
 | | Page |
 |---|---|
-| Carrier PCB v0.2 | [hardware/carrier/](hardware/carrier/README.md) |
-| Case for the carrier | [hardware/case-carrier/](hardware/case-carrier/README.md) |
 | Parts list, pin plan, costs | [docs/HBOM.md](docs/HBOM.md) |
+| Breadboard build, step by step | [web/guides/breadboard-build.html](web/guides/breadboard-build.html) |
+| Perfboard layout, hole by hole | [web/guides/perfboard-layout.html](web/guides/perfboard-layout.html) |
+| Carrier PCB v0.2 | [hardware/carrier/](hardware/carrier/README.md) |
+| Integrated PCB draft | [hardware/board/](hardware/board/README.md) |
+| Cases | [prototype](hardware/case-proto/README.md), [carrier](hardware/case-carrier/README.md) |
 | Bring-up checklist | [docs/BRINGUP.md](docs/BRINGUP.md) |
 | What the status light means | [docs/LED-BEHAVIOUR.md](docs/LED-BEHAVIOUR.md) |
-
-Hardware still being worked on lives on the `devel` branch: a board with the RP2040 fitted
-directly, and the step-by-step guides and case for the hand-built prototype that proved the
-design.
 
 The simplest build needs no PCB at all: an RP2040-Zero and a receiver joined by four wires
 (5V, GND, GP0 to the receiver's RX pad, GP1 to its TX pad), running the lite firmware.
@@ -124,8 +124,8 @@ Hardware builds (PCB generation and checks, order files, case exports) are liste
 |------|----------|
 | `firmware/` | Firmware. `core/` is hardware independent and unit tested; `src/` is the RP2040 side |
 | `tests/` | Host unit tests, and browser tests for the configuration page |
-| `web/` | The configuration page and the bootloader flasher |
-| `hardware/` | KiCad project for the carrier PCB, its generator scripts, and its OpenSCAD case |
+| `web/` | The configuration page, the bootloader flasher, and the build guides |
+| `hardware/` | KiCad projects for the two PCBs, their generator scripts, and the OpenSCAD cases |
 | `docs/` | Hardware index, parts list, bring-up checklist, firmware and page notes |
 | `tools/` | Build container and helper scripts |
 | `.github/workflows/` | CI: build, test, and publishing of the page and firmware |
