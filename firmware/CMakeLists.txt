@@ -11,7 +11,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
 
-set(FW_VERSION "0.1.0" CACHE STRING "Firmware version string")
+# tools/build.sh passes the real version, worked out from git by tools/version.sh.
+set(FW_VERSION "0.0.0-unversioned" CACHE STRING "Firmware version string")
 set(PRODUCT_NAME "ELRS Sim RX" CACHE STRING "USB product string and console banner")
 
 # Receiver settings over the CRSF parameter protocol (console: rxinfo, rxparam).

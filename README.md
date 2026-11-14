@@ -25,7 +25,7 @@ checks, and the status table below says which.
 | Prototype hardware (breadboard, then perfboard) | Built and working |
 | Carrier PCB v0.2 | Ordered, not yet received or tested |
 | Carrier case | Designed and checked for overlaps in CAD; not printed yet |
-| Hosting on GitHub Pages, release and development builds | Workflow written, never run |
+| Hosting on GitHub Pages, release and development builds | CI builds, tests and publishes the development firmware; no release tagged yet |
 
 ## What it does
 
@@ -117,6 +117,18 @@ are different computers: open the address it prints in Chrome or Edge on that PC
 
 Hardware builds (PCB generation and checks, order files, case exports) are listed in
 [docs/HARDWARE.md](docs/HARDWARE.md).
+
+## Versions
+
+The firmware and the configuration page are released together under one version: a `vX.Y.Z`
+tag on `main`. The page is published alongside the firmware it flashes, so the two always
+match. Builds that are not on a release tag name themselves after the next patch version, the
+number of commits since the last release and the commit, for example `0.1.1-dev.4+3664729`;
+`tools/version.sh` works this out and `version` on the console reports it.
+
+Each board has its own revision, printed on its silkscreen, and is not part of the release
+number. The commit a board was ordered from is tagged `<board>-v<revision>`, for example
+`carrier-v0.2`. Release notes say which boards a firmware release supports.
 
 ## Layout
 
