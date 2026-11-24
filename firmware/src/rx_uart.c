@@ -13,6 +13,8 @@ static uint32_t ring_ts[RING_SIZE];   // arrival time per byte, ms since boot
 static volatile uint16_t ring_head;
 static volatile uint16_t ring_tail;
 static volatile size_t overruns;
+static volatile uint32_t rx_bytes;            // diagnostics: total received since boot
+static uint8_t recent[RX_UART_RECENT];        // and the last few, whatever the parser made of them
 static bool enabled;
 static uint32_t current_baud;
 
@@ -26,6 +28,8 @@ static void on_uart_rx(void)
     }
     while (uart_is_readable(CRSF_UART)) {
         uint8_t b = uart_getc(CRSF_UART);
+        recent[rx_bytes % RX_UART_RECENT] = b;
+        rx_bytes++;
         uint16_t next = (uint16_t)((ring_head + 1) & (RING_SIZE - 1));
         if (next != ring_tail) {
             ring[ring_head] = b;
@@ -136,4 +140,20 @@ void rx_uart_write(const uint8_t *buf, size_t len)
 size_t rx_uart_rx_overruns(void)
 {
     return overruns;
+}
+
+uint32_t rx_uart_rx_bytes(void)
+{
+    return rx_bytes;
+}
+
+size_t rx_uart_recent(uint8_t *buf, size_t max)
+{
+    uint32_t save = save_and_disable_interrupts();
+    uint32_t total = rx_bytes;
+    size_t n = total < RX_UART_RECENT ? (size_t)total : RX_UART_RECENT;
+    if (n > max) n = max;
+    for (size_t i = 0; i < n; i++) buf[i] = recent[(total - n + i) % RX_UART_RECENT];
+    restore_interrupts(save);
+    return n;
 }

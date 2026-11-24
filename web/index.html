@@ -528,6 +528,9 @@ class MockDevice extends Device {
         break;
       }
       case 'bind': case 'bindcycle': case 'rxbootloader': case 'reboot': case 'dfu': this.reply({ ok: true }); break;
+      case 'rxprobe': this.reply({ ok: true, gp0_edges: 1, gp1_edges: 212, gp0_off: 0, gp1_off: 0, gp0_on: 1, gp1_on: 1, verdict: 'ok: receiver transmits on GP1' }); break;
+      case 'rxraw': this.reply({ ok: true, uart: s.rx_power, baud: 420000, bytes: Math.round(this.t * 6500), last: 'c8 0c 14 2a 00 64 0b 00 06 01 00 00 00 9d' }); break;
+      case 'pins': this.reply({ ok: true, gp0_to_rx: 1, gp1_from_rx: 1, gp2_rx_power: +s.rx_power, gp3_button: 1, gp4_led: 1 }); break;
       default: this.reply({ ok: false, error: 'unknown command (mock)' });
     }
     return p;

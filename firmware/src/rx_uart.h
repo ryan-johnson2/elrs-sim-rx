@@ -18,3 +18,8 @@ size_t rx_uart_read_ts(uint8_t *buf, uint32_t *ts_ms, size_t max);
 void   rx_uart_discard(void);                        // drop everything buffered
 void   rx_uart_write(const uint8_t *buf, size_t len); // blocking
 size_t rx_uart_rx_overruns(void);
+
+// Diagnostics: every byte received since boot, and the most recent ones, oldest first.
+#define RX_UART_RECENT 32
+uint32_t rx_uart_rx_bytes(void);
+size_t rx_uart_recent(uint8_t *buf, size_t max);

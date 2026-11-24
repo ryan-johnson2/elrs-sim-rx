@@ -5,6 +5,7 @@
 #include "rx_power.h"
 #include "tusb.h"
 #include "pico/stdlib.h"
+#include "hardware/gpio.h"
 #include "hardware/watchdog.h"
 #include <stdio.h>
 #include <stdarg.h>
@@ -198,9 +199,11 @@ static void emit_status_json(uint32_t now_ms)
                app.crsf.link.uplink_lq, app.crsf.link.uplink_rssi1,
                app.crsf.link.uplink_snr, app.crsf.link.rf_mode,
                app.crsf.have_rc ? (long)(now_ms - app.crsf.last_rc_ms) : -1L);
-    out_printf("\"frames_ok\":%lu,\"frames_crc_err\":%lu,\"frames_timeout\":%lu,\"uart_overruns\":%lu,",
+    out_printf("\"frames_ok\":%lu,\"frames_crc_err\":%lu,\"frames_timeout\":%lu,\"uart_overruns\":%lu,"
+               "\"uart_bytes\":%lu,",
                (unsigned long)app.crsf.frames_ok, (unsigned long)app.crsf.frames_crc_err,
-               (unsigned long)app.crsf.frames_timeout, (unsigned long)rx_uart_rx_overruns());
+               (unsigned long)app.crsf.frames_timeout, (unsigned long)rx_uart_rx_overruns(),
+               (unsigned long)rx_uart_rx_bytes());
     out_printf("\"reports_sent\":%lu,\"reports_dropped\":%lu,\"console_dropped\":%lu,\"console_truncated\":%lu,"
                "\"profile\":%u,\"config_dirty\":%s}\r\n",
                (unsigned long)app.reports_sent, (unsigned long)app.reports_dropped,
@@ -386,6 +389,7 @@ static void cmd_help(void)
 #if !ELRS_LITE
         "  rxpower on|off|toggle        receiver power now\r\n"
         "  rxboot on|off                receiver power at plug-in\r\n"
+        "  rxprobe                      power-cycle the RX and report which serial pin it drives\r\n"
 #endif
         "  bind                         send CRSF bind command to RX\r\n"
 #if !ELRS_LITE
@@ -398,10 +402,92 @@ static void cmd_help(void)
         "  rxparam <id> <value> [bytes] write it (bytes 1, 2 or 4; default 1)\r\n"
 #endif
         "  rxbootloader                 send CRSF bootloader command to RX\r\n"
+        "  rxraw                        bytes received from the RX: count and the last 32 in hex\r\n"
+        "  pins                         level on each pin the board uses\r\n"
         "  save | defaults | reboot\r\n"
         "  dfu [nodrive]                reboot into the bootloader; nodrive hides the RPI-RP2 drive\r\n"
         "  #                            Betaflight CLI mode (for ELRS flasher)\r\n");
 }
+
+// What the serial line from the receiver has carried, before the CRSF parser: tells "nothing
+// arrives" from "bytes arrive but are not CRSF" (wrong baud, noise, a receiver in its bootloader).
+static void emit_rxraw_json(void)
+{
+    uint8_t buf[RX_UART_RECENT];
+    size_t n = rx_uart_recent(buf, sizeof(buf));
+    out_printf("{\"ok\":true,\"uart\":%s,\"baud\":%lu,\"bytes\":%lu,\"last\":\"",
+               rx_uart_is_enabled() ? "true" : "false", (unsigned long)rx_uart_get_baud(),
+               (unsigned long)rx_uart_rx_bytes());
+    for (size_t i = 0; i < n; i++) out_printf("%s%02x", i ? " " : "", buf[i]);
+    out_str("\"}\r\n");
+}
+
+// Level on each pin the carrier uses, read back from the pad itself.
+static void emit_pins_json(void)
+{
+    out_printf("{\"ok\":true,\"gp0_to_rx\":%d,\"gp1_from_rx\":%d", gpio_get(PIN_CRSF_TX), gpio_get(PIN_CRSF_RX));
+#if !ELRS_LITE
+    out_printf(",\"gp2_rx_power\":%d,\"gp3_button\":%d,\"gp4_led\":%d",
+               gpio_get(PIN_RX_POWER), gpio_get(PIN_BUTTON), gpio_get(PIN_LED));
+#endif
+    out_str("}\r\n");
+}
+
+#if !ELRS_LITE
+// Wiring check: which of the two serial pins does the receiver drive? An ESP receiver's boot
+// ROM prints a banner on its TX pad at every power-up, whatever firmware it runs and whether
+// or not it is bound. Both of our pins are inputs here, so a swapped pair cannot fight.
+static volatile uint32_t probe_edges[2];
+
+static void probe_irq(void)
+{
+    uint32_t ev = gpio_get_irq_event_mask(PIN_CRSF_TX);
+    if (ev) { gpio_acknowledge_irq(PIN_CRSF_TX, ev); probe_edges[0]++; }
+    ev = gpio_get_irq_event_mask(PIN_CRSF_RX);
+    if (ev) { gpio_acknowledge_irq(PIN_CRSF_RX, ev); probe_edges[1]++; }
+}
+
+static void probe_wait(uint32_t ms)
+{
+    absolute_time_t t = make_timeout_time_ms(ms);
+    while (!time_reached(t)) tud_task();
+}
+
+static void rx_probe(uint32_t now_ms)
+{
+    const uint32_t mask = (1u << PIN_CRSF_TX) | (1u << PIN_CRSF_RX);
+    const uint32_t edges = GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL;
+    // Kept under the config page's 2 s reply timeout.
+    rx_power_set(false, now_ms);            // UART off, pins high-Z, receiver off
+    probe_wait(300);
+    gpio_pull_up(PIN_CRSF_TX);
+    gpio_pull_up(PIN_CRSF_RX);
+    bool off0 = gpio_get(PIN_CRSF_TX), off1 = gpio_get(PIN_CRSF_RX);
+    probe_edges[0] = probe_edges[1] = 0;
+    gpio_add_raw_irq_handler_masked(mask, probe_irq);
+    gpio_set_irq_enabled(PIN_CRSF_TX, edges, true);
+    gpio_set_irq_enabled(PIN_CRSF_RX, edges, true);
+    irq_set_enabled(IO_IRQ_BANK0, true);
+    gpio_put(PIN_RX_POWER, 1);
+    probe_wait(1200);            // the banner comes within the first 100 ms
+    gpio_set_irq_enabled(PIN_CRSF_TX, edges, false);
+    gpio_set_irq_enabled(PIN_CRSF_RX, edges, false);
+    gpio_remove_raw_irq_handler_masked(mask, probe_irq);
+    bool on0 = gpio_get(PIN_CRSF_TX), on1 = gpio_get(PIN_CRSF_RX);
+    gpio_disable_pulls(PIN_CRSF_TX);
+    gpio_disable_pulls(PIN_CRSF_RX);
+    // the receiver stays on; this only hands the pins back to the UART
+    rx_power_set(true, to_ms_since_boot(get_absolute_time()));
+    uint32_t e0 = probe_edges[0], e1 = probe_edges[1];
+    const char *verdict = (e1 > 20 && e0 <= 20) ? "ok: receiver transmits on GP1"
+                        : (e0 > 20 && e1 <= 20) ? "swapped: receiver transmits on GP0"
+                        : (e0 > 20 && e1 > 20)  ? "both pins toggle: shorted together?"
+                        : "silent: receiver not running, or its TX pad is not connected";
+    out_printf("{\"ok\":true,\"gp0_edges\":%lu,\"gp1_edges\":%lu,\"gp0_off\":%d,\"gp1_off\":%d,"
+               "\"gp0_on\":%d,\"gp1_on\":%d,\"verdict\":\"%s\"}\r\n",
+               (unsigned long)e0, (unsigned long)e1, off0, off1, on0, on1, verdict);
+}
+#endif
 
 static void handle_bf_command(int argc, char **argv, uint32_t now_ms)
 {
@@ -534,6 +620,15 @@ static void handle_command(char *cmdline, uint32_t now_ms)
 #if ELRS_LITE
     } else if (!strcmp(cmd, "rxpower") || !strcmp(cmd, "rxboot") || !strcmp(cmd, "bindcycle")) {
         emit_err("not on this build: no receiver power switch");
+#endif
+    } else if (!strcmp(cmd, "rxraw")) {
+        emit_rxraw_json();
+    } else if (!strcmp(cmd, "pins")) {
+        emit_pins_json();
+#if !ELRS_LITE
+    } else if (!strcmp(cmd, "rxprobe")) {
+        if (app.passthrough) emit_err("busy: passthrough active");
+        else rx_probe(now_ms);
 #endif
     } else if (!strcmp(cmd, "rxpower")) {
         if (argc < 2) emit_err("usage: rxpower on|off|toggle");

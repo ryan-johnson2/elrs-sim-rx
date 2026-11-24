@@ -178,6 +178,9 @@ rxpower on|off|toggle         receiver power now
 rxboot on|off                 receiver power at plug-in
 bind | bindcycle | rxbootloader
 modelmatch <0-63|off>         set the receiver's model-match ID
+rxprobe                       wiring check, see below (full build only)
+rxraw                         {"uart":..,"baud":..,"bytes":N,"last":"c8 0c 14 .."}: bytes from the receiver
+pins                          level on each pin the board uses, read back from the pad
 rxinfo                        {"name":..,"sw":"4.0.1","fields":N,..} from the receiver
 rxparam <id>                  one receiver setting: type, name, value/options/text
 rxparam <id> <value> [1|2|4]  write it (value width in bytes, default 1), reply as for a read
@@ -189,6 +192,33 @@ dfu [nodrive]                 reboot into the UF2 bootloader. `nodrive` starts i
 Mapping changes take effect immediately and are lost on reboot until `save`, which writes
 them to the active profile. `status` reports `config_dirty` so a UI can show an unsaved
 indicator, and `profile`, the active slot number.
+
+## Wiring diagnostics
+
+For a board that powers up but never links. All three are safe to run at any time.
+
+- `status` counts `uart_bytes`, every byte received from the receiver since boot, next to the
+  frame counters. Zero bytes means nothing reaches GP1 at all. Bytes without `frames_ok` means
+  something arrives that is not CRSF at 420000 baud. A receiver that has no bind phrase yet and
+  is waiting to bind sends nothing, so zero is not on its own proof of a fault.
+- `rxraw` shows the last 32 of those bytes in hex. CRSF frames from the receiver start `c8`.
+- `pins` reads the level on GP0 to GP4 back from the pads. Both serial pins idle at 1 while the
+  receiver is on.
+- `rxprobe` answers "is the receiver's TX pad really on GP1" without depending on the receiver's
+  firmware or bind state. It switches the receiver off, makes GP0 and GP1 inputs with pull-ups,
+  switches it on again and counts edges on each pin for 1.2 s. An ESP receiver's boot ROM prints
+  a banner on its TX pad at every power-up, so that pin shows hundreds of edges. The reply gives
+  both counts, the levels with the receiver off and on, and a verdict:
+
+  | Verdict | Meaning |
+  |---|---|
+  | `ok: receiver transmits on GP1` | Wired correctly |
+  | `swapped: receiver transmits on GP0` | The receiver's TX and RX pads are the wrong way round |
+  | `silent: ...` | The receiver did not start, or its TX pad reaches neither pin: check the joints from the pad to the module's GP1 pin, at both ends |
+  | `both pins toggle: ...` | TX and RX are bridged |
+
+  The link drops for the two seconds it takes. A multimeter cannot make this distinction: both
+  lines idle at 3.3 V whether they are right, swapped or open (GP1 has a pull-up).
 
 ## Betaflight CLI emulation and passthrough
 
