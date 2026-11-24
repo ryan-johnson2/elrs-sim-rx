@@ -1,5 +1,6 @@
 // Drive web/index.html in mock mode, capture console errors and screenshots.
 import { chromium } from 'playwright';
+import fs from 'node:fs';
 
 const URL = process.env.WEBUI_URL || 'file:///work/web/index.html?mock';
 const OUT = process.env.SHOTS_DIR || '/shots';
@@ -155,6 +156,64 @@ await page.waitForTimeout(400);
 check('deleting profile 1 leaves one profile', (await page.locator('#sel-profile option').count()) === 1);
 check('slot 1 reads empty again', (await page.locator('#sel-slot option').first().textContent()) === '1: (empty)');
 await page.screenshot({ path: `${OUT}/10-profiles.png`, fullPage: true });
+
+// Profile export and import. Here: profile 2 "Liftoff" is the only one, with axis 1 on channel 6.
+await page.selectOption('#ax-ch-0', '4');
+await page.waitForTimeout(300);
+await page.click('#btn-profile-export');
+await page.waitForTimeout(300);
+check('export refuses while there are unsaved changes', (await page.textContent('#profile-result')).includes('Save the unsaved changes first'));
+await page.selectOption('#sel-slot', '3');
+await page.fill('#in-profile-name', 'Sim B');
+await page.click('#btn-profile-save');
+await page.waitForTimeout(600);
+const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-profile-export')]);
+const exportPath = await download.path();
+const exported = JSON.parse(fs.readFileSync(exportPath, 'utf8'));
+await page.waitForTimeout(800);
+check('export file is named and dated', /^simrx-profiles-\d{4}-\d\d-\d\d\.json$/.test(download.suggestedFilename()), download.suggestedFilename());
+check('export holds both profiles by slot', exported.format === 'elrs-sim-rx-profiles' && exported.profiles.map((p) => p.slot).join() === '2,3');
+check('export carries names and mappings', exported.profiles[0].name === 'Liftoff' && exported.profiles[0].axes[0].ch === 1 && exported.profiles[0].axes[1].ch === 6
+  && exported.profiles[1].name === 'Sim B' && exported.profiles[1].axes[0].ch === 4 && exported.profiles[1].buttons.length === 36);
+check('export leaves the active profile where it was', (await page.inputValue('#sel-profile')) === '3' && (await page.inputValue('#ax-ch-0')) === '4');
+check('export reports what it did', (await page.textContent('#profile-result')).includes('Exported 2 profiles'));
+// wreck both, then bring them back from the file
+await page.selectOption('#sel-slot', '2');
+page.once('dialog', (d) => d.accept());
+await page.click('#btn-profile-delete');
+await page.waitForTimeout(400);
+await page.selectOption('#ax-ch-0', '8');
+await page.waitForTimeout(300);
+await page.click('#btn-save');
+await page.waitForTimeout(1300);
+check('one profile left before the import', (await page.locator('#sel-profile option').count()) === 1);
+let importPrompt = '';
+page.once('dialog', (d) => { importPrompt = d.message(); d.accept(); });
+await page.setInputFiles('#file-profiles', exportPath);
+await page.waitForTimeout(3000);
+check('import asks, naming what it replaces', importPrompt.includes('Import 2 profiles') && importPrompt.includes('3: Sim B'), importPrompt);
+check('import reports what it did', (await page.textContent('#profile-result')).includes('Imported 2 profiles'), await page.textContent('#profile-result'));
+check('import restores both profiles', (await page.locator('#sel-profile option').count()) === 2);
+check('import returns to the profile that was active, restored', (await page.inputValue('#sel-profile')) === '3' && (await page.inputValue('#ax-ch-0')) === '4');
+check('import leaves nothing unsaved', !(await page.locator('#dirty').isVisible()));
+await page.selectOption('#sel-profile', '2');
+await page.waitForTimeout(600);
+check('imported profile 2 has its name and mapping', (await page.locator('#sel-profile option:checked').textContent()) === '2: Liftoff'
+  && (await page.inputValue('#ax-ch-0')) === '1' && (await page.inputValue('#ax-ch-1')) === '6');
+await page.setInputFiles('#file-profiles', { name: 'other.json', mimeType: 'application/json', buffer: Buffer.from('{"profiles":[]}') });
+await page.waitForTimeout(300);
+check('a file that is not a profile export is refused', (await page.textContent('#profile-result')).includes('not an ELRS Sim RX profile file'));
+const broken = JSON.parse(JSON.stringify(exported)); broken.profiles[0].axes[0].ch = 99;
+await page.setInputFiles('#file-profiles', { name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(broken)) });
+await page.waitForTimeout(300);
+check('a file with an out-of-range channel is refused before anything is sent', (await page.textContent('#profile-result')).includes('profile 2: bad axes')
+  && (await page.inputValue('#ax-ch-0')) === '1');
+await page.screenshot({ path: `${OUT}/11-profile-import.png`, fullPage: true });
+// put things back as the later checks expect: profile 2 alone
+await page.selectOption('#sel-slot', '3');
+page.once('dialog', (d) => d.accept());
+await page.click('#btn-profile-delete');
+await page.waitForTimeout(400);
 
 // Tabs: the console, receiver update guide and dongle firmware each have their own page
 check('console hidden on the controller page', !(await page.locator('#console').isVisible()));
