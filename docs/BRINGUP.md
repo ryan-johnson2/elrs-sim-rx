@@ -50,8 +50,10 @@ Bypass the P-FET for now: EP2 5V straight to the board's 5V pin. TX→GP1, RX→
 
 - [ ] With the radio off: `status` shows `link: false`, `led: "disconnected"` (slow blink),
       `frames_ok` climbing slowly (link-stats frames arrive even without a TX). If
-      `frames_ok` stays 0 and `frames_crc_err` or `uart_overruns` climb, check baud and
-      swap TX/RX.
+      `frames_ok` stays 0, look at `uart_bytes`: climbing means bytes arrive but are not CRSF
+      (check baud, `rxraw` shows them); also 0 means nothing arrives. Then run `rxprobe`,
+      which tells swapped TX/RX from an open joint. Swapped lines give all-zero counters,
+      not CRC errors. A receiver with no bind phrase yet also sends nothing.
 - [ ] Radio on: `link: true`, `failsafe: false`, `led: "connected"` (solid), `frames_ok`
       climbing at the packet rate, `reports_sent` climbing at the same rate,
       `reports_dropped` near zero. `last_rc_age_ms` small.

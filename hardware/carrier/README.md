@@ -2,7 +2,8 @@
 
 KiCad 9 project for the Phase 2 carrier in [docs/HBOM.md](../../docs/HBOM.md). v0.2 follows the
 Phase 1 breadboard and perfboard builds: the module is soldered in directly, the back-row
-socket is gone, and the receiver mount was redrawn for the Happymodel EP2. Not yet ordered.
+socket is gone, and the receiver mount was redrawn for the Happymodel EP2. Five boards were made
+(JLCPCB, ordered 2026-11-14); the first was assembled and brought up on 2026-11-24.
 
 | | |
 |---|---|
@@ -23,17 +24,18 @@ Electrically the same as the Phase 1 breadboard build with the planned Phase 2 s
 - 2N7002 replaces the 2N7000 LED ring driver, same 100 R gate resistor and 100 k pull-down.
 - Pin map is unchanged from `firmware/src/board.h`. No firmware changes are needed.
 
-## Check before ordering
+## Checks
 
-1. **EP2 pad order.** GND, 5V, TX, RX from the left with the pad edge toward the module and
-   the antenna side up, from the EP2 TCXO manual: ground is the end pad on the antenna's side.
-   The EP2 itself has no pad labels. Compare with the EP2 wired to the working prototype.
+1. **EP2 pad order: confirmed on board 1** (2026-11-24: receiver powers, CRSF frames arrive on
+   GP1, passthrough flashing works). GND, 5V, TX, RX from the left with the pad edge toward the
+   module and the antenna side up; ground is the end pad on the antenna's side. The EP2 itself
+   has no pad labels.
 2. **EP2 pad pitch and underside: checked.** A photo of a real EP2 on a steel rule
    (2026-11-14) shows the outer pads 7.6 mm apart, so 2.54 mm pitch, centred on the edge, and
    nothing taller than a bare pad within 2.2 mm of the pad edge on the ESP side.
 3. **RP2040-Zero pin grid.** Two rows of nine, 15.24 mm apart, pin 1 (5V left, GP0 right) at
    the USB end, and the five back-row holes in line with the last pin of each side row.
-   Not yet checked: an unmodified module should drop into plain 0.1 inch perfboard.
+   Confirmed on board 1: an unmodified module drops in.
 4. **Height under the module.** The SMD parts sit under the soldered-in module, which stands
    about 2.5 mm off the board on its header spacers. The tallest part is the 0805 capacitor.
 5. **LCSC part numbers** in the schematic `LCSC` field were filled in from memory. Confirm
@@ -70,3 +72,11 @@ silkscreen. The v0.1 files are kept in `out/v0.1-backup/`.
 `gerbers.zip`, `bom.csv` and `cpl.csv`. Only the fab-assembled parts are listed.
 
 After opening the board in the KiCad GUI, press B once to refill zones.
+
+## Bring-up notes
+
+Board 1 at first received nothing from the receiver and could not flash it by passthrough. The
+cause was a dry joint on the module's GP1 header pin, not the receiver's castellations. The
+serial lines idle at 3.3 V whether they are connected, swapped or open, so a meter on the
+powered board does not show this; use continuity from the top of each receiver castellation to
+the module pin, or the firmware's `rxprobe` command (see docs/FIRMWARE.md).
