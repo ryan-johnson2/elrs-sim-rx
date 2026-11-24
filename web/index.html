@@ -133,6 +133,12 @@
         <button id="btn-profile-delete" class="danger">Delete</button>
         <span class="muted" id="profile-result"></span>
       </div>
+      <div class="row" style="margin-bottom:10px">
+        <button id="btn-profile-export">Export profiles</button>
+        <button id="btn-profile-import">Import profiles…</button>
+        <input type="file" id="file-profiles" accept=".json,application/json" class="hidden">
+        <span class="muted">Saves every profile to a file on this computer, or loads them back from one, for a backup or a second dongle.</span>
+      </div>
     </div>
     <div class="muted">Mapping changes apply instantly on the device but are lost at reboot until saved. <b>Save to device</b>
       writes them to the active profile. The dongle holds 16 profiles.</div>
@@ -948,6 +954,98 @@ $('btn-profile-rename').onclick = async () => {
   const name = $('in-profile-name').value.trim();
   if (!name) { $('profile-result').textContent = 'Type the new name first.'; return; }
   if (await profileCmd(`profile name ${$('sel-slot').value} ${name}`)) $('in-profile-name').value = '';
+};
+// Export and import. The file holds every used profile: slot, name, axes, buttons, throttle axis
+// and failsafe time. The dongle only reports the mapping of the active profile, so exporting
+// switches through them and back, and importing sets each mapping and saves it to its slot.
+// Receiver power at plug-in is one setting for the whole dongle and is not in the file.
+const PROFILE_FORMAT = 'elrs-sim-rx-profiles';
+const isUnsaved = () => !$('dirty').classList.contains('hidden');
+const quietCmd = (c) => cmd(c, { quiet: true });
+function profileBusy(on) { for (const id of ['btn-profile-export', 'btn-profile-import', 'sel-profile', 'btn-profile-save', 'btn-profile-rename', 'btn-profile-delete']) $(id).disabled = on; }
+function checkProfileFile(d) {
+  const int = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+  if (!d || d.format !== PROFILE_FORMAT || !Array.isArray(d.profiles)) return 'not an ELRS Sim RX profile file';
+  if (d.version !== 1) return 'made by a newer version of this page';
+  if (!d.profiles.length || d.profiles.length > profiles.profiles.length) return 'it holds no profiles, or too many';
+  const seen = new Set();
+  for (const p of d.profiles) {
+    const where = `profile ${p?.slot}`;
+    if (!p || !int(p.slot, 1, profiles.profiles.length) || seen.has(p.slot)) return 'a slot number is missing, out of range or repeated';
+    seen.add(p.slot);
+    if (p.name !== undefined && typeof p.name !== 'string') return `${where}: bad name`;
+    if (!Array.isArray(p.axes) || p.axes.length !== map.axes.length || !p.axes.every((a) => a && int(a.ch, 0, 16) && typeof a.invert === 'boolean')) return `${where}: bad axes`;
+    if (!Array.isArray(p.buttons) || p.buttons.length !== map.buttons.length || !p.buttons.every((b) => b && int(b.ch, 0, 16) && ['none', 'low', 'mid', 'high'].includes(b.level))) return `${where}: bad buttons`;
+    if (!int(p.throttle_axis, -1, map.axes.length - 1)) return `${where}: bad throttle axis`;
+    if (!int(p.failsafe_ms, 20, 250)) return `${where}: bad failsafe time`;
+  }
+  return null;
+}
+async function mustOk(c, want = 'ok') {
+  const r = await quietCmd(c);
+  if (!r || (want === 'ok' ? r.ok === false : !r[want])) throw new Error(r?.error || `no reply to "${c}"`);
+  return r;
+}
+$('btn-profile-export').onclick = async () => {
+  const out = $('profile-result'); out.textContent = '';
+  if (isUnsaved()) { out.textContent = 'Save the unsaved changes first: exporting reads each profile back from the dongle.'; return; }
+  const start = profiles.active, list = [];
+  let at = start, failed = null;
+  profileBusy(true);
+  try {
+    for (const p of profiles.profiles.filter((p) => p.used)) {
+      if (p.n !== at) { await mustOk('profile use ' + p.n, 'profiles'); at = p.n; }
+      const m = await mustOk('map', 'axes');
+      list.push({ slot: p.n, name: p.name, axes: m.axes.map((a) => ({ ch: a.ch, invert: !!a.invert })),
+        buttons: m.buttons.map((b) => ({ ch: b.ch, level: b.level })), throttle_axis: m.throttle_axis, failsafe_ms: m.failsafe_ms });
+    }
+  } catch (e) { failed = e.message; }
+  if (at !== start) await quietCmd('profile use ' + start);
+  await refreshProfiles(); await refreshMap(); await refreshStatus();
+  profileBusy(false);
+  if (failed) { out.textContent = 'Export failed: ' + failed; return; }
+  const file = { format: PROFILE_FORMAT, version: 1, exported: new Date().toISOString(), firmware: $('st-version').textContent.trim(), profiles: list };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 1) + '\n'], { type: 'application/json' }));
+  a.download = `simrx-profiles-${file.exported.slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  out.textContent = `Exported ${list.length} profile${list.length === 1 ? '' : 's'}.`;
+};
+$('btn-profile-import').onclick = () => $('file-profiles').click();
+$('file-profiles').onchange = async (e) => {
+  const f = e.target.files[0], out = $('profile-result');
+  e.target.value = '';                       // so choosing the same file again fires this again
+  if (!f) return;
+  out.textContent = '';
+  let d = null;
+  try { d = JSON.parse(await f.text()); } catch {}
+  const bad = checkProfileFile(d);
+  if (bad) { out.textContent = `Cannot import ${f.name}: ${bad}.`; return; }
+  const over = d.profiles.filter((p) => profiles.profiles[p.slot - 1].used).map((p) => `${p.slot}: ${profiles.profiles[p.slot - 1].name}`);
+  let q = `Import ${d.profiles.length} profile${d.profiles.length === 1 ? '' : 's'} from ${f.name}?`;
+  if (over.length) q += `\n\nThis replaces ${over.join(', ')}.`;
+  if (isUnsaved()) q += '\n\nThe unsaved changes will be lost.';
+  if (!confirm(q)) return;
+  const start = profiles.active;
+  let done = 0, failed = null;
+  profileBusy(true);
+  try {
+    for (const p of d.profiles) {
+      for (const [i, a] of p.axes.entries()) await mustOk(`axis ${i} ${a.ch}${a.invert ? ' invert' : ''}`);
+      for (const [i, b] of p.buttons.entries()) await mustOk(`button ${i} ${b.ch} ${b.level}`);
+      await mustOk(`throttle ${p.throttle_axis < 0 ? 'none' : p.throttle_axis}`);
+      await mustOk(`failsafe ${p.failsafe_ms}`);
+      // "Profile 3" is what an unnamed slot is called; do not turn it into a real name
+      const name = /^Profile \d+$/.test(p.name || '') ? '' : (p.name || '');
+      await mustOk(`profile save ${p.slot} ${name}`.trim(), 'profiles');
+      done++;
+    }
+  } catch (err) { failed = err.message; }
+  await quietCmd('profile use ' + start);    // back to the profile that was active, as stored
+  await refreshProfiles(); await refreshMap(); await refreshStatus();
+  profileBusy(false);
+  out.textContent = failed ? `Import stopped after ${done} of ${d.profiles.length}: ${failed}` : `Imported ${done} profile${done === 1 ? '' : 's'}.`;
 };
 $('btn-profile-delete').onclick = async () => {
   const n = +$('sel-slot').value, p = profiles.profiles[n - 1];

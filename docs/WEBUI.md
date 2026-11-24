@@ -125,6 +125,16 @@ switching, and all 16 slots for **Save current mapping here**, **Rename** and **
 Switching with unsaved changes asks first; so does overwriting another profile. The controls
 stay hidden when the firmware answers `profile` with an error (builds from before profiles).
 
+**Export profiles** downloads `simrx-profiles-<date>.json` holding every used profile: slot,
+name, axes, buttons, throttle axis and failsafe time. **Import profiles…** reads such a file and
+writes each profile to the slot it came from, after a prompt that names the profiles it will
+replace. Slots the file does not mention are left alone, and the profile that was active stays
+active. Both work through the existing console commands, so any firmware with profiles will do:
+the dongle only reports the active profile's mapping, so export switches through the profiles
+and back (and refuses while there are unsaved changes), and import sets each mapping and saves
+it. The file is checked in full before anything is sent. Receiver power at plug-in is one
+setting for the whole dongle and is not in the file.
+
 ## Model match
 
 The Receiver section on the Controller tab has a model match selector (Off, 0 to 63) and **Set on receiver**,
