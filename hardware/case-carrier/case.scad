@@ -10,7 +10,9 @@
 //          two long edges. Print top face down.
 //
 // Coordinates are the board's own (hardware/carrier/gen/gen_pcb.py): x across the board from
-// the 5V-pin edge, y along it from the USB end, z up from the tray's underside.
+// the 5V-pin edge, y along it from the USB end, z up from the tray's underside. The board file
+// has y running down the page seen from the top, so with z up those axes are left-handed:
+// everything is modelled in them and handed() mirrors the result into the real shape.
 
 part = "assembly"; // [assembly, tray, lid, check]
 inline = true;       // button bay past the receiver end (true) or beside the board (false)
@@ -177,14 +179,19 @@ module usb_plug() {
     color("white") box([usb_x - 6.25, -24, T + usb_zc - 3.25], [usb_x + 6.25, -usb_over, T + usb_zc + 3.25]);
 }
 
-if (part == "tray") tray();
-else if (part == "lid") translate([0, 0, Z + top_t]) rotate([180, 0, 0]) translate([0, -(ya + yb), 0]) lid();
-else if (part == "check") {
-    if (check_n == 0) intersection() { tray(); lid(); }
-    if (check_n == 1) intersection() { union() { tray(); lid(); } union() { electronics(); button(); usb_plug(); } }
-} else {
-    color("gainsboro") tray();
-    electronics();
-    usb_plug();
-    translate([0, 0, explode]) { if (show_lid) color("orange", 0.85) lid(); button(); }
+// Board coordinates to the real, right-handed shape: mirrored across the board's centre line.
+module handed() { translate([board_w, 0, 0]) mirror([1, 0, 0]) children(); }
+
+handed() {
+    if (part == "tray") tray();
+    else if (part == "lid") translate([0, 0, Z + top_t]) rotate([180, 0, 0]) translate([0, -(ya + yb), 0]) lid();
+    else if (part == "check") {
+        if (check_n == 0) intersection() { tray(); lid(); }
+        if (check_n == 1) intersection() { union() { tray(); lid(); } union() { electronics(); button(); usb_plug(); } }
+    } else {
+        color("gainsboro") tray();
+        electronics();
+        usb_plug();
+        translate([0, 0, explode]) { if (show_lid) color("orange", 0.85) lid(); button(); }
+    }
 }
