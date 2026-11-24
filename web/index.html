@@ -988,6 +988,7 @@ async function mustOk(c, want = 'ok') {
 }
 $('btn-profile-export').onclick = async () => {
   const out = $('profile-result'); out.textContent = '';
+  await refreshStatus();                     // the unsaved marker follows a once-a-second poll; ask now
   if (isUnsaved()) { out.textContent = 'Save the unsaved changes first: exporting reads each profile back from the dongle.'; return; }
   const start = profiles.active, list = [];
   let at = start, failed = null;
@@ -1022,6 +1023,7 @@ $('file-profiles').onchange = async (e) => {
   try { d = JSON.parse(await f.text()); } catch {}
   const bad = checkProfileFile(d);
   if (bad) { out.textContent = `Cannot import ${f.name}: ${bad}.`; return; }
+  await refreshStatus();                     // so the prompt knows about a change made a moment ago
   const over = d.profiles.filter((p) => profiles.profiles[p.slot - 1].used).map((p) => `${p.slot}: ${profiles.profiles[p.slot - 1].name}`);
   let q = `Import ${d.profiles.length} profile${d.profiles.length === 1 ? '' : 's'} from ${f.name}?`;
   if (over.length) q += `\n\nThis replaces ${over.join(', ')}.`;
