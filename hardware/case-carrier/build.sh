@@ -11,7 +11,7 @@ scad() {
 }
 IMG=(--imgsize=1200,850 --colorscheme=Tomorrow --render)
 
-for p in tray lid; do
+for p in tray lid lid_text lid_flush; do
     scad "$@" -D "part=\"$p\"" -o "${OUT}/$p.stl" case.scad
     scad "$@" -D "part=\"$p\"" "${IMG[@]}" --viewall --autocenter -o "${OUT}/part-$p.png" case.scad
 done

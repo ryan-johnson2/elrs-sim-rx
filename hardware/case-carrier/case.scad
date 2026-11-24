@@ -4,7 +4,7 @@
 // tall as the button is deep. By default the bay is in line with the board, past the receiver
 // end, which keeps the case narrow; set inline = false for a bay beside the button pads.
 // Two printed parts:
-//   tray   the board drops in onto ledges and a pin through its M2 hole. A bay on the
+//   tray   the board drops in onto ledges and clicks over a split pin through its M2 hole. A bay on the
 //          button-pad side holds the button body. Print floor down.
 //   lid    carries the button, clicks into the tray, and holds the board down along its
 //          two long edges. Print top face down.
@@ -14,7 +14,7 @@
 // has y running down the page seen from the top, so with z up those axes are left-handed:
 // everything is modelled in them and handed() mirrors the result into the real shape.
 
-part = "assembly"; // [assembly, tray, lid, check]
+part = "assembly"; // [assembly, tray, lid, lid_text, lid_flush, check]
 inline = true;       // button bay past the receiver end (true) or beside the board (false)
 explode = 0;
 show_lid = true;
@@ -50,7 +50,7 @@ rx_down = 1.2;       // receiver parts hanging below the board's top face
 
 /* [Fit] */
 fit = 0.25;          // board to tray
-lid_fit = 0.2;
+lid_fit = 0.15;
 floor_t = 1.6;
 wall = 2.0;
 top_t = 2.0;
@@ -58,9 +58,24 @@ ledge = 1.2;
 rib = 1.2;           // rib between the board and the button bay, as high as the board's top face
 lip_t = 1.4;
 lap = 4;
-bump = 0.4;
+bump = 0.5;
+snap_play = 0.1;     // groove is this much larger than the bump, and sits this much lower, so the
+                     // bump bears on the top of its groove while the lid sits on the wall: no rattle
+pin_d = 1.9;         // split pin through the 2.2 mm mounting hole
+barb_d = 2.5;        // across the two barbs; they spring in by the width of the slot
+pin_slot = 0.6;
+pin_neck = 0.15;     // gap between the board's top face and the barbs
+pin_head = 1.6;      // barbs and lead-in above that
+pin_sink = 0.8;      // the pin starts this far down in the floor, for longer and so softer prongs
 usb_open = [13.5, 8];
 bay = btn_nut + 1.0 + lip_t + lid_fit; // button bay depth: the nut, 0.5 either side, and the lid's lip on the outer wall
+
+/* [Lid label] */
+label = "SIMRX";     // inlaid in the lid's top face; "" for none
+label_size = 7;      // letter height
+label_depth = 0.6;   // three 0.2 mm layers
+label_font = "Liberation Sans:style=Bold";
+flush_step = 0.05;   // lid_flush: the letters are outlined by a step this deep, less than a layer
 
 /* [Hidden] */
 $fn = 64;
@@ -80,7 +95,7 @@ usb_x = (row_x[0] + row_x[1]) / 2;
 bx = inline ? usb_x : xr + rib + 0.5 + btn_nut / 2;
 by = inline ? yr + rib + 0.5 + btn_nut / 2 : 21;
 snap_z = Z - lap / 2;
-snap_l = 20;
+snap_l = 30;
 
 echo(str("OUTER SIZE: ", xb - xa + 2 * wall, " x ", yb - ya + 2 * wall, " x ", Z + top_t));
 echo(str("inside height above the board: ", H, ", button body ends ", Z - btn_depth - floor_t, " above the floor"));
@@ -113,21 +128,61 @@ module tray() {
             // stops at the USB end, where the cavity runs past the board for the socket
             box([xa, ya, floor_t - e], [1.5, -fit, T]);
             box([board_w - 1.5, ya, floor_t - e], [inline ? xr : xr + rib, -fit, T]);
-            // boss and pin for the M2 hole
-            translate([hole[0], hole[1], floor_t - e]) cylinder(d = 5, h = T - board_t - floor_t + e);
-            translate([hole[0], hole[1], floor_t - e]) cylinder(d = 1.9, h = T + 0.8 - floor_t);
+            // boss under the board around the mounting hole; the split pin stands in its well
+            translate([hole[0], hole[1], floor_t - e]) cylinder(d = 5.5, h = T - board_t - floor_t + e);
             // shelf under the receiver's free end, for a foam pad
             box([xa, rx_edge + 4, floor_t - e], [cut_x - 0.5, yr, T - rx_down - 1.0]);
         }
         // USB-C plug: a slot open to the top, closed by the lid
         usb_cut(Z + e);
         // click grooves
-        yrod(xa, snap_z, bump + 0.1);
-        yrod(xb, snap_z, bump + 0.1);
+        yrod(xa, snap_z - snap_play, bump + snap_play);
+        yrod(xb, snap_z - snap_play, bump + snap_play);
+        // well around the split pin, so its prongs are free from below the floor's surface
+        translate([hole[0], hole[1], floor_t - pin_sink]) cylinder(d = pin_d + 1.4, h = T);
+    }
+    split_pin();
+}
+
+// Pin through the board's mounting hole: two prongs with a barb each. They close up as the
+// board is pressed over them and open again above it. The prongs flex across the board (x).
+module split_pin() {
+    z0 = floor_t - pin_sink - e;
+    zn = T + pin_neck;                         // underside of the barbs
+    rise = (barb_d - pin_d) / 2;               // 45 degrees, so it prints without support
+    translate([hole[0], hole[1], 0]) difference() {
+        intersection() {
+            union() {
+                translate([0, 0, z0]) cylinder(d = pin_d, h = zn - z0 + e);
+                translate([0, 0, zn]) cylinder(d1 = pin_d, d2 = barb_d, h = rise + e);
+                translate([0, 0, zn + rise]) cylinder(d1 = barb_d, d2 = pin_d - 0.5, h = pin_head - rise);
+            }
+            // barbs on the two prongs only: across the slot the pin stays its own width
+            translate([-barb_d, -pin_d / 2, z0]) cube([2 * barb_d, pin_d, T + pin_head + 5]);
+        }
+        translate([-pin_slot / 2, -barb_d, z0 + 0.2]) cube([pin_slot, 2 * barb_d, T + pin_head + 5]);
     }
 }
 
-module lid() {
+// The label as a solid in the lid's top face, reading from the USB end toward the button. It
+// is written the right way round and put through handed() here, because everything in this
+// file is mirrored once more on the way out.
+module label_solid(grow = 0, depth = label_depth) {
+    y1 = by - btn_nut / 2 - 1;                  // keep clear of the button's bezel
+    if (label != "") handed()
+        translate([board_w / 2, (ya - wall + y1) / 2, Z + top_t - depth])
+            rotate([0, 0, 90]) linear_extrude(depth + grow)
+                text(label, size = label_size, font = label_font, halign = "center", valign = "center");
+}
+
+module lid(depth = label_depth) {
+    difference() {
+        lid_body();
+        label_solid(e, depth);
+    }
+}
+
+module lid_body() {
     difference() {
         union() {
             rbox([xa - wall, ya - wall, Z], [xb + wall, yb + wall, Z + top_t]);
@@ -185,6 +240,11 @@ module handed() { translate([board_w, 0, 0]) mirror([1, 0, 0]) children(); }
 handed() {
     if (part == "tray") tray();
     else if (part == "lid") translate([0, 0, Z + top_t]) rotate([180, 0, 0]) translate([0, -(ya + yb), 0]) lid();
+    // the label alone, placed exactly where the lid's recess is, to load as a second part
+    else if (part == "lid_text") translate([0, 0, Z + top_t]) rotate([180, 0, 0]) translate([0, -(ya + yb), 0]) label_solid();
+    // one-piece lid for painting the letters in the slicer: the step around them is too shallow
+    // to print, so the face comes out flat, but it gives a fill tool an edge to stop at
+    else if (part == "lid_flush") translate([0, 0, Z + top_t]) rotate([180, 0, 0]) translate([0, -(ya + yb), 0]) lid(flush_step);
     else if (part == "check") {
         if (check_n == 0) intersection() { tray(); lid(); }
         if (check_n == 1) intersection() { union() { tray(); lid(); } union() { electronics(); button(); usb_plug(); } }
@@ -192,6 +252,6 @@ handed() {
         color("gainsboro") tray();
         electronics();
         usb_plug();
-        translate([0, 0, explode]) { if (show_lid) color("orange", 0.85) lid(); button(); }
+        translate([0, 0, explode]) { if (show_lid) { color("orange", 0.85) lid(); color("white") label_solid(); } button(); }
     }
 }
