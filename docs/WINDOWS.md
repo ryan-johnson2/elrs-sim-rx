@@ -43,7 +43,7 @@ board enters update mode. Two ways to stop that:
 
 - **Windows setting:** Settings > Bluetooth & devices > AutoPlay, set "Removable drive" to
   "Take no action". Works with every flashing method.
-- **Firmware panel option:** "Do not show the RPI-RP2 drive while updating" starts the
+- **Firmware panel option:** "Hide the RPI-RP2 drive" starts the
   bootloader without its drive. Only the WebUSB route works in that mode. Untested so far:
   with the drive gone the bootloader is no longer a two-interface device, so Windows may not
   apply the WinUSB driver that Zadig bound to "RP2 Boot (Interface 1)", and Zadig may have to

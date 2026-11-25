@@ -83,16 +83,17 @@ Details, the console commands and the flash layout are in
 ## Configuring
 
 `web/index.html` is a single static page that talks to the dongle over Web Serial, so it
-needs Chrome or Edge on a desktop. Click Connect and pick the device. It has four tabs:
+needs Chrome or Edge on a desktop. Click Connect and pick the device. It has five tabs:
 
-- **Controller:** profiles and saving, live channels, the axis and button mapping, link
-  status, receiver power, bind, model match and the receiver's own settings.
-- **Receiver firmware:** how to update the receiver's ExpressLRS firmware through the dongle.
-- **Dongle firmware:** update the dongle itself.
+- **Controller** (the page it opens on): profiles and saving, live channels, the axis and
+  button mapping, link status, receiver power, bind, model match and the receiver's own settings.
+- **Firmware:** update the dongle itself.
+- **RX flashing:** the short steps for updating the receiver's ExpressLRS firmware through
+  the dongle, with a link to the ExpressLRS Web Flasher.
 - **Console:** the raw console and counters.
+- **Docs:** the user documentation.
 
-Changes apply at once; **Save to device** writes them to the active profile. Adding `?mock`
-to the address runs the page against a simulated device.
+Changes apply at once; **Save to device** writes them to the active profile.
 
 The same serial port answers a plain terminal at any baud rate: type `help`.
 

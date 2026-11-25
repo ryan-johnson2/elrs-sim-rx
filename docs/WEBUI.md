@@ -61,14 +61,24 @@ On connect the page does: `stream off`, `map`, `status`, `stream on 50`, then po
 
 ## Pages
 
-One file, four tabs, chosen by the URL hash so each can be linked to:
+One file, five tabs, chosen by the URL hash so each can be linked to:
 
 | Tab | Hash | What is on it |
 |-----|------|---------------|
-| Controller | `#main` (default) | Profile and saving first, then channels, axes, buttons, status, receiver power / bind / model match and receiver settings |
-| Receiver firmware | `#receiver-update` | Step-by-step instructions for updating the receiver's ExpressLRS firmware through the dongle's passthrough, with a fault table |
-| Dongle firmware | `#firmware` | The firmware panel below, with its flash log folded away, plus Reboot dongle and a plain Enter update mode button |
+| Controller | `#controller` (default) | Profile and saving first, then channels, axes, buttons, status, receiver power / bind / model match and receiver settings |
+| Firmware | `#firmware` | The firmware panel below, with its flash log folded away, plus Reboot dongle and a plain Enter update mode button |
+| RX flashing | `#receiver-update` | Five short steps for updating the receiver through the dongle's passthrough: a Disconnect button, a link to the ExpressLRS Web Flasher, and a link to the full guide in Docs |
 | Console | `#console` | The raw console, the frame and HID counters, and the channel-stream toggle |
+| Docs | `#docs` | The user documentation: getting started, flashing, the Windows driver, profiles and mapping, the receiver, updating the receiver's firmware, the status light, the console commands and links to the build guides |
+
+Each Docs section has its own hash, `#docs-<section>` (for example `#docs-windows`), which
+opens the Docs tab scrolled to it. The old hash `#main` still works.
+
+The working tabs carry as little text as possible. Explanations live in the Docs tab, and
+short ones in tooltips: any element with a `data-tip` attribute shows it on hover or keyboard
+focus, and a `<span class="tip" data-tip="...">?</span>` gives a "?" mark for things that are
+not buttons. When adding a control, put its one-line explanation in a tooltip and anything
+longer in Docs.
 
 There is no developer mode any more; the Console tab replaces it.
 
@@ -87,7 +97,9 @@ Flashing runs in the browser over WebUSB using the RP2040 bootloader's PICOBOOT
 interface (`web/picoboot.js`, protocol from pico-sdk `boot/picoboot.h` and picotool).
 
 1. Pick a firmware: the dropdown lists `firmware/manifest.json` entries served next to
-   the page (written by `tools/build.sh`), or Browse for a local `.uf2`. Hosted files are
+   the page (written by `tools/build.sh`), or Browse for a local `.uf2`. Entries are named
+   by variant and version only, "Full v0.1.2", with "(development)" added on the devel
+   channel; the commit, build time and size are on the line under the dropdown. Hosted files are
    SHA-256 checked against the manifest; every file is parsed as a UF2 before flashing.
 2. **Update firmware** does the rest in one click: it sends `dfu` over the open serial
    connection, waits up to 10 s for the bootloader to appear among the USB devices this page
@@ -101,7 +113,7 @@ interface (`web/picoboot.js`, protocol from pico-sdk `boot/picoboot.h` and picot
 The step-by-step buttons stay for that first time and for boards with no firmware (hold BOOT
 while plugging in, then step 2). Progress and a log are shown; the log is under "Flash log".
 
-**Do not show the RPI-RP2 drive while updating** sends `dfu nodrive`, which starts the
+**Hide the RPI-RP2 drive** sends `dfu nodrive`, which starts the
 bootloader with only its PICOBOOT interface, so Windows opens no Explorer window. Not yet
 tried on hardware. The manual drag-and-drop route cannot be used in that mode, and the WinUSB
 driver binding on Windows may differ from the normal bootloader's; see `docs/WINDOWS.md`.
@@ -115,18 +127,19 @@ and checks the resulting image byte for byte, plus the command order and error p
 
 ## Mock mode
 
-`web/index.html?mock` (or the footer link) connects to an in-page simulated device with
-moving sticks and switches. Useful for layout work without hardware.
+`web/index.html?mock` connects to an in-page simulated device with moving sticks and
+switches, and makes Connect reconnect to it. Useful for layout work without hardware, and
+what the browser test runs against. It is a development aid: nothing on the page links to it.
 
 ## Profiles
 
 The "Profile and saving" section on the Controller tab lists the dongle's used profiles for
-switching, and all 16 slots for **Save current mapping here**, **Rename** and **Delete**.
+switching, and all 16 slots for **Save here**, **Rename** and **Delete**.
 Switching with unsaved changes asks first; so does overwriting another profile. The controls
 stay hidden when the firmware answers `profile` with an error (builds from before profiles).
 
-**Export profiles** downloads `simrx-profiles-<date>.json` holding every used profile: slot,
-name, axes, buttons, throttle axis and failsafe time. **Import profiles…** reads such a file and
+**Export** downloads `simrx-profiles-<date>.json` holding every used profile: slot,
+name, axes, buttons, throttle axis and failsafe time. **Import…** reads such a file and
 writes each profile to the slot it came from, after a prompt that names the profiles it will
 replace. Slots the file does not mention are left alone, and the profile that was active stays
 active. Both work through the existing console commands, so any firmware with profiles will do:
@@ -137,7 +150,7 @@ setting for the whole dongle and is not in the file.
 
 ## Model match
 
-The Receiver section on the Controller tab has a model match selector (Off, 0 to 63) and **Set on receiver**,
+The Receiver section on the Controller tab has a model match selector (Off, 0 to 63) and **Set**,
 which sends `modelmatch <id>`. Pick the radio model's Receiver number if Model Match is on
 in the ExpressLRS Lua, Off otherwise. The receiver stores the value. Until the
 receiver settings are loaded the selector only remembers the last value sent from this
@@ -168,7 +181,7 @@ browser or Node is needed on the host:
 - `tests/web/test_picoboot.mjs` (Node): UF2 parsing, flash planning and the PICOBOOT
   command sequence against a simulated bootloader, using the real build output.
 - `tests/web/test_webui.mjs` (Chromium): loads the page in mock mode and exercises
-  connect, mapping edits, power toggle, save, defaults, the tabs, the console, the
+  connect, mapping edits, power toggle, save, defaults, the tabs, tooltips, the console, the
   full firmware update flow against the in-page mock bootloader, and disconnect. Checks
   for browser console errors and layout overflow, and writes screenshots to
   `tests/web/shots/`.

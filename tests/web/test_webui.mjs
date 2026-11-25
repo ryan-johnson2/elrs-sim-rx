@@ -2,7 +2,7 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
-const URL = process.env.WEBUI_URL || 'file:///work/web/index.html?mock';
+const URL = process.env.WEBUI_URL || 'file:///work/web/index.html?mock';   // ?mock: the in-page simulated device
 const OUT = process.env.SHOTS_DIR || '/shots';
 const errors = [];
 const results = [];
@@ -16,6 +16,22 @@ page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}`));
 
 await page.goto(URL);
 await page.waitForTimeout(1500);   // let mock connect, map/status load, stream start
+
+// The controller page is the one a bare address opens
+check('controller page is the default', await page.locator('#channels').isVisible() && (await page.locator('#tabs a.on').textContent()) === 'Controller');
+check('firmware panel hidden to start with', !(await page.locator('#sec-firmware').isVisible()));
+check('no simulated-device link on the page', (await page.locator('#link-mock').count()) === 0 && !(await page.innerText('body')).includes('simulated device'));
+check('no footer', (await page.locator('footer').count()) === 0);
+
+// Tooltips: shown on hover, hidden again, and never wider than the window
+await page.locator('#sec-rxsettings .tip').scrollIntoViewIfNeeded();
+await page.waitForTimeout(200);   // scrolling closes a tooltip, so let it settle first
+await page.hover('#sec-rxsettings .tip');
+check('tooltip shows on hover', await page.locator('#tipbox').isVisible() && (await page.textContent('#tipbox')).includes('ExpressLRS 4.0'));
+await page.hover('#btn-save');
+check('buttons carry tooltips too', (await page.textContent('#tipbox')).includes('active profile'));
+await page.hover('header h1');
+check('tooltip hides when the pointer leaves', !(await page.locator('#tipbox').isVisible()));
 
 // Connected UI state
 check('disconnect button visible', await page.locator('#btn-disconnect').isVisible());
@@ -215,14 +231,31 @@ page.once('dialog', (d) => d.accept());
 await page.click('#btn-profile-delete');
 await page.waitForTimeout(400);
 
-// Tabs: the console, receiver update guide and dongle firmware each have their own page
+// Tabs: the console, the docs and dongle firmware each have their own page
 check('console hidden on the controller page', !(await page.locator('#console').isVisible()));
 check('firmware panel hidden on the controller page', !(await page.locator('#sec-firmware').isVisible()));
-await page.click('#tab-rxfw');
+await page.click('#tab-docs');
 await page.waitForTimeout(200);
-check('receiver firmware guide visible on its tab', await page.locator('#sec-rxfw').isVisible());
-check('channels hidden on the receiver firmware tab', !(await page.locator('#channels').isVisible()));
-await page.screenshot({ path: `${OUT}/08-receiver-firmware.png`, fullPage: true });
+check('docs visible on their tab', await page.locator('#docs-start').isVisible() && await page.locator('#docs-console').isVisible());
+check('channels hidden on the docs tab', !(await page.locator('#channels').isVisible()));
+await page.screenshot({ path: `${OUT}/08-docs.png`, fullPage: true });
+await page.click('.toc a[href="#docs-windows"]');
+await page.waitForTimeout(200);
+check('docs contents link scrolls to its section', await page.evaluate(() => { const t = document.getElementById('docs-windows').getBoundingClientRect().top; return t >= 0 && t < 100; }));
+check('docs tab stays lit on a section link', (await page.locator('#tabs a.on').textContent()) === 'Docs');
+await page.click('#tab-main');
+await page.click('section[data-page="main"] a[href="#receiver-update"]');
+await page.waitForTimeout(200);
+check('controller links to the RX flashing tab', await page.locator('#btn-rxfw-disconnect').isVisible() && (await page.locator('#tabs a.on').textContent()) === 'RX flashing');
+check('RX flashing links to the ExpressLRS flasher', (await page.locator('#sec-rxfw a.btn').getAttribute('href')) === 'https://expresslrs.github.io/web-flasher/');
+check('RX flashing page is short', (await page.innerText('#sec-rxfw')).length < 400, String((await page.innerText('#sec-rxfw')).length));
+await page.screenshot({ path: `${OUT}/12-rx-flashing.png`, fullPage: false });
+await page.click('#sec-rxfw a[href="#docs-receiver-update"]');
+await page.waitForTimeout(200);
+check('RX flashing links to the full guide in docs', await page.locator('#docs-receiver-update').isVisible());
+await page.evaluate(() => { location.hash = '#main'; });
+await page.waitForTimeout(200);
+check('old link #main still opens the controller', await page.locator('#channels').isVisible());
 await page.click('#tab-console');
 await page.waitForTimeout(200);
 check('console visible on its tab', await page.locator('#console').isVisible());
@@ -260,6 +293,8 @@ check('step 1 disconnected the device', await page.locator('#btn-connect').isVis
 check('step 2 enabled', !(await page.locator('#btn-fw-step2').isDisabled()));
 await page.click('#btn-fw-step2');
 await page.waitForFunction(() => document.getElementById('fw-status').textContent.startsWith('Flashed'), null, { timeout: 15000 }).catch(() => {});
+const fwNames = await page.locator('#fw-select option').allTextContents();
+check('firmware names are short', fwNames.every((n) => n.length <= 32), fwNames.join(' | '));
 const fwStatus = await page.textContent('#fw-status');
 check('mock flash completed', fwStatus.startsWith('Flashed'), fwStatus);
 check('progress bar full', (await page.getAttribute('#fw-bar', 'style') || '').includes('100%'));
@@ -268,7 +303,7 @@ check('flash log shows erase and reboot', fwLogText.includes('erase 0x10000000')
 await page.screenshot({ path: `${OUT}/06-firmware-flashed-dev.png`, fullPage: true });
 
 // Reconnect mock for the remaining checks
-await page.click('#link-mock');
+await page.click('#btn-connect');
 await page.click('#tab-main');
 await page.waitForTimeout(1200);
 check('reconnected after flash', await page.locator('#btn-disconnect').isVisible());
@@ -281,7 +316,7 @@ await page.waitForFunction(() => document.getElementById('fw-status').textConten
 check('one-click update completed', (await page.textContent('#fw-status')).startsWith('Flashed'), await page.textContent('#fw-status'));
 check('one-click update disconnected the device', await page.locator('#btn-connect').isVisible());
 check('update button usable again', !(await page.locator('#btn-fw-auto').isDisabled()));
-await page.click('#link-mock');
+await page.click('#btn-connect');
 await page.click('#tab-main');
 await page.waitForTimeout(1200);
 check('reconnected after one-click update', await page.locator('#btn-disconnect').isVisible());
