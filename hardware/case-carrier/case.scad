@@ -4,7 +4,8 @@
 // tall as the button is deep. By default the bay is in line with the board, past the receiver
 // end, which keeps the case narrow; set inline = false for a bay beside the button pads.
 // Two printed parts:
-//   tray   the board drops in onto ledges and clicks over a split pin through its M2 hole. A bay on the
+//   tray   the board drops in onto ledges and is held by an M2 screw through its mounting hole,
+//          threaded straight into a boss. A bay on the
 //          button-pad side holds the button body. Print floor down.
 //   lid    carries the button, clicks into the tray, and holds the board down along its
 //          two long edges. Print top face down.
@@ -61,12 +62,9 @@ lap = 4;
 bump = 0.5;
 snap_play = 0.1;     // groove is this much larger than the bump, and sits this much lower, so the
                      // bump bears on the top of its groove while the lid sits on the wall: no rattle
-pin_d = 1.9;         // split pin through the 2.2 mm mounting hole
-barb_d = 2.5;        // across the two barbs; they spring in by the width of the slot
-pin_slot = 0.6;
-pin_neck = 0.15;     // gap between the board's top face and the barbs
-pin_head = 1.6;      // barbs and lead-in above that
-pin_sink = 0.8;      // the pin starts this far down in the floor, for longer and so softer prongs
+screw_pilot = 1.8;   // hole for an M2 screw to cut its own thread in; goes through the floor, so
+                     // any length from 5 mm fits (longer ones stand out underneath)
+boss_d = 5.5;
 usb_open = [13.5, 8];
 bay = btn_nut + 1.0 + lip_t + lid_fit; // button bay depth: the nut, 0.5 either side, and the lid's lip on the outer wall
 
@@ -128,8 +126,8 @@ module tray() {
             // stops at the USB end, where the cavity runs past the board for the socket
             box([xa, ya, floor_t - e], [1.5, -fit, T]);
             box([board_w - 1.5, ya, floor_t - e], [inline ? xr : xr + rib, -fit, T]);
-            // boss under the board around the mounting hole; the split pin stands in its well
-            translate([hole[0], hole[1], floor_t - e]) cylinder(d = 5.5, h = T - board_t - floor_t + e);
+            // boss under the board around the mounting hole
+            translate([hole[0], hole[1], floor_t - e]) cylinder(d = boss_d, h = T - board_t - floor_t + e);
             // shelf under the receiver's free end, for a foam pad
             box([xa, rx_edge + 4, floor_t - e], [cut_x - 0.5, yr, T - rx_down - 1.0]);
         }
@@ -138,29 +136,9 @@ module tray() {
         // click grooves
         yrod(xa, snap_z - snap_play, bump + snap_play);
         yrod(xb, snap_z - snap_play, bump + snap_play);
-        // well around the split pin, so its prongs are free from below the floor's surface
-        translate([hole[0], hole[1], floor_t - pin_sink]) cylinder(d = pin_d + 1.4, h = T);
-    }
-    split_pin();
-}
-
-// Pin through the board's mounting hole: two prongs with a barb each. They close up as the
-// board is pressed over them and open again above it. The prongs flex across the board (x).
-module split_pin() {
-    z0 = floor_t - pin_sink - e;
-    zn = T + pin_neck;                         // underside of the barbs
-    rise = (barb_d - pin_d) / 2;               // 45 degrees, so it prints without support
-    translate([hole[0], hole[1], 0]) difference() {
-        intersection() {
-            union() {
-                translate([0, 0, z0]) cylinder(d = pin_d, h = zn - z0 + e);
-                translate([0, 0, zn]) cylinder(d1 = pin_d, d2 = barb_d, h = rise + e);
-                translate([0, 0, zn + rise]) cylinder(d1 = barb_d, d2 = pin_d - 0.5, h = pin_head - rise);
-            }
-            // barbs on the two prongs only: across the slot the pin stays its own width
-            translate([-barb_d, -pin_d / 2, z0]) cube([2 * barb_d, pin_d, T + pin_head + 5]);
-        }
-        translate([-pin_slot / 2, -barb_d, z0 + 0.2]) cube([pin_slot, 2 * barb_d, T + pin_head + 5]);
+        // pilot hole for the M2 screw, with a lead-in at the top
+        translate([hole[0], hole[1], -e]) cylinder(d = screw_pilot, h = T);
+        translate([hole[0], hole[1], T - board_t - 0.4]) cylinder(d1 = screw_pilot, d2 = screw_pilot + 0.6, h = 0.4 + e);
     }
 }
 
@@ -214,6 +192,8 @@ module electronics() {
         union() { box([0, 0, T - board_t], [board_w, cut_y, T]); box([cut_x, cut_y - e, T - board_t], [board_w, board_l, T]); }
         translate([hole[0], hole[1], T - board_t - 1]) cylinder(d = 2.2, h = board_t + 2);
     }
+    // M2 pan head screw
+    color("silver") translate([hole[0], hole[1], T]) cylinder(d = 4, h = 1.6);
     // module: header spacers, board, parts on top, USB-C socket
     color("gold") for (x = row_x) box([x - 1.27, pin1_y - 1.3, T], [x + 1.27, pin1_y + 8 * 2.54 + 1.3, T + 2.5]);
     color("navy") box([2, mod_y0, T + 2.5], [20, mod_y0 + mod_l, T + 3.5]);
