@@ -72,7 +72,7 @@
   nav#tabs a { padding: 9px 12px; color: var(--muted); text-decoration: none; font-size: 14px; white-space: nowrap; border-bottom: 2px solid transparent; }
   nav#tabs a.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
   main > section { display: none; }
-  body[data-page="main"] section[data-page="main"], body[data-page="rxfw"] section[data-page="rxfw"],
+  body[data-page="main"] section[data-page="main"], body[data-page="docs"] section[data-page="docs"], body[data-page="rxfw"] section[data-page="rxfw"],
   body[data-page="fw"] section[data-page="fw"], body[data-page="console"] section[data-page="console"] { display: block; }
   ol.steps { margin: 10px 0; padding-left: 22px; display: grid; gap: 8px; max-width: 75ch; }
   section h3 { font-size: 14px; margin: 14px 0 6px; }
@@ -83,7 +83,20 @@
   details ol { font-size: 13px; color: var(--muted); margin: 6px 0 0; padding-left: 20px; }
   .toggle { font-size: 12px; padding: 4px 9px; }
   .toggle.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  footer { max-width: 1100px; margin: 0 auto; padding: 8px 16px 24px; color: var(--muted); font-size: 13px; }
+  .tip { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 17px; height: 17px; border-radius: 50%;
+    border: 1px solid var(--line); color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1; cursor: help; user-select: none; }
+  .tip:hover, .tip:focus-visible { color: var(--text); border-color: var(--muted); }
+  #tipbox { position: fixed; z-index: 10; max-width: min(300px, calc(100vw - 16px)); padding: 7px 10px; border-radius: 8px; background: var(--text); color: var(--bg);
+    font-size: 13px; font-weight: 400; line-height: 1.4; pointer-events: none; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); }
+  a.btn { display: inline-block; padding: 7px 12px; border-radius: 8px; background: var(--accent); color: var(--accent-text); text-decoration: none; }
+  .toc { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+  section.doc { scroll-margin-top: 12px; }
+  section.doc p, section.doc li { font-size: 14px; }
+  section.doc ul { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+  section.doc pre { margin: 10px 0; padding: 10px 12px; overflow-x: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  section.doc code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  section.doc td:first-child { white-space: nowrap; }
+  @media (max-width: 700px) { section.doc td:first-child { white-space: normal; } }
   a { color: var(--accent); }
 </style>
 </head>
@@ -96,30 +109,77 @@
   <button id="btn-disconnect" class="hidden">Disconnect</button>
 </header>
 <nav id="tabs">
-  <a href="#main" id="tab-main" data-page="main">Controller</a>
-  <a href="#receiver-update" id="tab-rxfw" data-page="rxfw">Receiver firmware</a>
-  <a href="#firmware" id="tab-fw" data-page="fw">Dongle firmware</a>
+  <a href="#controller" id="tab-main" data-page="main">Controller</a>
+  <a href="#firmware" id="tab-fw" data-page="fw">Firmware</a>
+  <a href="#receiver-update" id="tab-rxfw" data-page="rxfw">RX flashing</a>
   <a href="#console" id="tab-console" data-page="console">Console</a>
+  <a href="#docs" id="tab-docs" data-page="docs">Docs</a>
 </nav>
 
 <main>
   <div id="no-serial" class="banner wide hidden">
-    This browser has no Web Serial support. Use Chrome, Edge or Opera on desktop, or run the device console from a terminal.
+    This browser has no Web Serial support. Use Chrome, Edge or Opera on desktop.
   </div>
 
+  <!-- ===== Firmware ===== -->
+  <section class="wide" id="sec-firmware" data-page="fw">
+    <h2>Dongle firmware <span class="spacer"></span><span id="fw-current" class="muted"></span>
+      <button id="btn-reboot" data-tip="Restart the dongle. Unsaved mapping changes are lost.">Reboot dongle</button>
+    </h2>
+    <div class="row" style="margin-bottom:8px">
+      <select id="fw-select"><option value="file">Choose a .uf2 file…</option></select>
+      <span class="tip" data-tip="Full: boards with the button, LED ring and receiver power switch. Lite: a module wired straight to the receiver.">?</span>
+      <input type="file" id="fw-file" accept=".uf2" class="hidden">
+      <button id="btn-fw-pick">Browse…</button>
+      <button id="btn-fw-download" data-tip="Save the file, for the manual method below.">Download UF2</button>
+      <span class="spacer"></span>
+      <button id="btn-fw-auto" class="primary" data-tip="Reboots the dongle into update mode and flashes it. The first time, the browser asks you to choose &quot;RP2 Boot&quot;.">Update firmware</button>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <label class="muted"><input type="checkbox" id="cb-fw-nodrive"> Hide the RPI-RP2 drive</label>
+      <span class="tip" data-tip="Starts the bootloader without its USB drive, so no Explorer window opens during the update. If the dongle is then not found, replug it.">?</span>
+      <span class="spacer"></span>
+      <span class="muted">Step by step</span>
+      <span class="tip" data-tip="For the first update on this computer, or a board with no firmware: hold BOOT while plugging it in, then use step 2.">?</span>
+      <button id="btn-fw-step1">1. Enter update mode</button>
+      <button id="btn-fw-step2" disabled>2. Select device and flash</button>
+    </div>
+    <div id="fw-info" class="muted"></div>
+    <div class="progress"><i id="fw-bar"></i></div>
+    <div id="fw-status" class="muted">Pick a firmware, then Update firmware.</div>
+    <details style="margin-top:8px">
+      <summary>Flash log</summary>
+      <div id="fw-log" class="console" style="height:120px; margin-top:8px"></div>
+    </details>
+    <details style="margin-top:8px">
+      <summary>Manual method, no driver needed</summary>
+      <ol>
+        <li>Download the UF2 above.</li>
+        <li><button id="btn-dfu" data-tip="Reboot into the UF2 bootloader">Enter update mode</button>
+          or hold BOOT while plugging the board in. A drive named <b>RPI-RP2</b> appears.</li>
+        <li>Copy the UF2 onto that drive.</li>
+      </ol>
+    </details>
+    <div class="muted" style="margin-top:10px">
+      <a href="#docs-windows">Windows: one-time driver setup</a> · <a href="#docs-flashing">Flashing help</a>
+    </div>
+  </section>
+
+  <!-- ===== Controller (the default page) ===== -->
   <section class="wide" data-page="main">
     <h2>Profile and saving
+      <span class="tip" data-tip="Changes apply at once but are lost at reboot until saved. Save to device writes them to the active profile. The dongle holds 16 profiles.">?</span>
       <span class="spacer"></span>
       <span id="dirty" class="dirty hidden">unsaved changes</span>
-      <button id="btn-save" class="primary">Save to device</button>
-      <button id="btn-defaults">Load defaults</button>
+      <button id="btn-save" class="primary" data-tip="Write the current mapping to the active profile.">Save to device</button>
+      <button id="btn-defaults" data-tip="Reset the current mapping to the defaults. Not stored until you save.">Load defaults</button>
     </h2>
     <div id="profile-box" class="hidden">
       <div class="row" style="margin-bottom:10px">
         <label>Active profile
           <select id="sel-profile"></select>
         </label>
-        <span class="muted">Switching loads that profile's axes, buttons, throttle axis and failsafe time.</span>
+        <span class="tip" data-tip="Each profile has its own axes, buttons, throttle axis and failsafe time. Switching drops unsaved changes.">?</span>
       </div>
       <div class="row" style="margin-bottom:10px">
         <label>Slot
@@ -128,20 +188,17 @@
         <label>Name
           <input type="text" id="in-profile-name" maxlength="15" placeholder="optional" style="width:150px" autocomplete="off">
         </label>
-        <button id="btn-profile-save">Save current mapping here</button>
+        <button id="btn-profile-save" data-tip="Save the current mapping to this slot and switch to it.">Save here</button>
         <button id="btn-profile-rename">Rename</button>
         <button id="btn-profile-delete" class="danger">Delete</button>
+      </div>
+      <div class="row">
+        <button id="btn-profile-export" data-tip="Download every profile as one file, for a backup or a second dongle.">Export</button>
+        <button id="btn-profile-import" data-tip="Load profiles from an exported file into the slots they came from. Asks before replacing anything.">Import…</button>
+        <input type="file" id="file-profiles" accept=".json,application/json" class="hidden">
         <span class="muted" id="profile-result"></span>
       </div>
-      <div class="row" style="margin-bottom:10px">
-        <button id="btn-profile-export">Export profiles</button>
-        <button id="btn-profile-import">Import profiles…</button>
-        <input type="file" id="file-profiles" accept=".json,application/json" class="hidden">
-        <span class="muted">Saves every profile to a file on this computer, or loads them back from one, for a backup or a second dongle.</span>
-      </div>
     </div>
-    <div class="muted">Mapping changes apply instantly on the device but are lost at reboot until saved. <b>Save to device</b>
-      writes them to the active profile. The dongle holds 16 profiles.</div>
   </section>
 
   <section class="wide" data-page="main">
@@ -156,24 +213,27 @@
       <tbody id="axes"></tbody>
     </table></div>
     <div class="row" style="margin-top:10px">
-      <label>Throttle axis (failsafe low)
+      <label>Throttle axis
         <select id="sel-throttle"></select>
       </label>
+      <span class="tip" data-tip="Held at minimum during failsafe. The other axes go to centre.">?</span>
       <label>Failsafe after
         <input type="number" id="in-failsafe" min="20" max="250" step="10" style="width:70px"> ms
       </label>
+      <span class="tip" data-tip="How long without channel data before the failsafe output starts. 20 to 250 ms.">?</span>
     </div>
   </section>
 
   <section data-page="main">
-    <h2>Buttons <span class="spacer"></span>
+    <h2>Buttons
+      <span class="tip" data-tip="Default: channels 5 to 16 give three buttons each (low, mid, high). In ELRS Hybrid or Wide switch mode, channels 15 and 16 carry LQ and RSSI: set buttons 31 to 36 to none, or use Full Res 16ch.">?</span>
+      <span class="spacer"></span>
       <button id="btn-buttons-toggle">Show all 36</button>
     </h2>
     <div class="tbl"><table>
       <thead><tr><th>#</th><th>Channel</th><th>Position</th><th>State</th></tr></thead>
       <tbody id="buttons"></tbody>
     </table></div>
-    <p class="muted">Default: channels 5 to 16 each give three buttons (low, mid, high). In ELRS Hybrid or Wide switch mode, channels 15 and 16 carry LQ and RSSI; set buttons 30 to 35 to "none" or use Full Res 16ch.</p>
   </section>
 
   <section data-page="main">
@@ -192,13 +252,8 @@
     <h2>Receiver</h2>
     <div class="row" style="margin-bottom:10px">
       <button id="btn-rxpower">RX power: ?</button>
-      <button id="btn-bind">Bind (serial)</button>
-      <button id="btn-bindcycle" title="Three power cycles, for receivers that ignore the serial bind command">Bind (power cycle)</button>
-    </div>
-    <div class="muted" style="margin-bottom:10px">
-      <b>Bind</b> puts the receiver into bind mode. Then choose Bind in the radio's ExpressLRS Lua script: the receiver
-      takes on the radio's bind phrase and keeps it. There is no way to type a bind phrase into the receiver over this
-      link; to set one without the radio, reflash the receiver from the <a href="#receiver-update">Receiver firmware</a> tab.
+      <button id="btn-bind" data-tip="Puts the receiver into bind mode. Then choose Bind in the radio's ExpressLRS Lua script.">Bind</button>
+      <button id="btn-bindcycle" data-tip="Three quick power cycles, for receivers that ignore the normal bind command.">Bind (power cycle)</button>
     </div>
     <div class="row" style="margin-bottom:10px">
       <label><input type="checkbox" id="cb-rxboot"> Power receiver on plug-in</label>
@@ -207,45 +262,206 @@
       <label>Model match
         <select id="sel-modelmatch"></select>
       </label>
-      <button id="btn-modelmatch">Set on receiver</button>
+      <button id="btn-modelmatch">Set</button>
+      <span class="tip" data-tip="Use the radio model's Receiver number if Model Match is on in the ExpressLRS Lua script, otherwise Off. A mismatch looks like no link at all.">?</span>
       <span class="muted" id="modelmatch-result"></span>
     </div>
-    <div class="muted" style="margin-bottom:10px">
-      Use the radio model's <b>Receiver number</b> when Model Match is on in the ExpressLRS Lua script, or Off when it is not.
-      The receiver stores the ID; load the receiver settings to see what it currently holds. A mismatch looks like a
-      receiver that sends nothing: radio on, no link, LED showing the WiFi pattern.
-    </div>
     <div class="muted">
-      To update the receiver's firmware or change its bind phrase, see the <a href="#receiver-update">Receiver firmware</a> tab.
+      <a href="#receiver-update">Update receiver firmware or bind phrase</a>
       <button id="btn-rxbootloader" class="hidden">RX bootloader</button>
     </div>
   </section>
 
   <section id="sec-rxsettings" data-page="main">
-    <h2>Receiver settings <span class="spacer"></span><span id="rxs-device" class="muted"></span></h2>
+    <h2>Receiver settings
+      <span class="tip" data-tip="The settings the ExpressLRS Lua script shows for the receiver. Needs ExpressLRS 4.0 or newer on the receiver. Changes are stored at once.">?</span>
+      <span class="spacer"></span><span id="rxs-device" class="muted"></span></h2>
     <div class="row" style="margin-bottom:10px">
       <button id="btn-rxs-load">Load from receiver</button>
       <span class="muted" id="rxs-status"></span>
     </div>
     <div class="tbl"><table><tbody id="rxs-fields"></tbody></table></div>
-    <div class="muted" style="margin-top:10px">
-      The settings the ExpressLRS Lua script shows for the receiver, read over the serial link. Needs ExpressLRS 4.0 or
-      newer on the receiver. Changes are stored by the receiver straight away.
+  </section>
+
+  <!-- ===== RX flashing ===== -->
+  <section class="wide" data-page="rxfw" id="sec-rxfw">
+    <h2>Flash the receiver
+      <span class="tip" data-tip="The dongle passes the ExpressLRS flasher straight through to the receiver. Use it to update the receiver or change its bind phrase.">?</span>
+    </h2>
+    <ol class="steps">
+      <li>Radio off, receiver powered.</li>
+      <li><button id="btn-rxfw-disconnect" data-tip="Only one page can use the serial port at a time.">Disconnect this page</button></li>
+      <li><a class="btn" href="https://expresslrs.github.io/web-flasher/" target="_blank" rel="noopener">Open the ExpressLRS Web Flasher</a></li>
+      <li>Pick your receiver, the <b>Betaflight passthrough</b> method, and the <b>ELRS Sim RX</b> port.</li>
+      <li>When it finishes, come back and Connect.</li>
+    </ol>
+    <div class="muted"><a href="#docs-receiver-update">Full guide and troubleshooting</a></div>
+  </section>
+
+  <!-- ===== Console ===== -->
+  <section class="wide" data-page="console">
+    <h2>Console <span class="spacer"></span>
+      <label class="muted" style="font-weight:400"><input type="checkbox" id="cb-show-stream"> channel stream</label>
+      <label class="muted" style="font-weight:400" data-tip="The page asks the dongle for its status once a second. Those requests stay out of the log unless this is ticked."><input type="checkbox" id="cb-show-poll"> status polling</label>
+      <button id="btn-clear">Clear</button>
+    </h2>
+    <dl class="kv" style="margin-bottom:10px">
+      <dt>Frames ok / crc / timeout</dt><dd id="st-frames">–</dd>
+      <dt>HID sent / dropped</dt><dd id="st-hid">–</dd>
+    </dl>
+    <div id="console" class="console"></div>
+    <form id="form-cmd" class="row" style="margin-top:8px">
+      <input type="text" id="in-cmd" placeholder="command, e.g. help" style="flex:1" autocomplete="off">
+      <button type="submit">Send</button>
+    </form>
+    <div class="muted" style="margin-top:8px"><a href="#docs-console">Command list</a></div>
+  </section>
+
+  <!-- ===== Docs ===== -->
+  <section class="wide doc" data-page="docs">
+    <h2>Documentation</h2>
+    <div class="toc">
+      <a href="#docs-start">Getting started</a>
+      <a href="#docs-flashing">Dongle firmware</a>
+      <a href="#docs-windows">Windows driver</a>
+      <a href="#docs-controller">Profiles and mapping</a>
+      <a href="#docs-receiver">Receiver</a>
+      <a href="#docs-receiver-update">Receiver firmware</a>
+      <a href="#docs-light">Status light and button</a>
+      <a href="#docs-console">Console</a>
+      <a href="#docs-more">Build guides and source</a>
     </div>
   </section>
 
+  <section class="wide doc" data-page="docs" id="docs-start">
+    <h2>Getting started</h2>
+    <ol class="steps">
+      <li><b>Flash the dongle</b> on the <a href="#firmware">Firmware</a> tab. For a board with no firmware yet, hold BOOT
+        while plugging it in, pick Full or Lite, then use "2. Select device and flash". Windows needs a
+        <a href="#docs-windows">driver</a> for that once; the manual method needs none.</li>
+      <li><b>Connect.</b> Click Connect at the top and pick <b>ELRS Sim RX</b>. This needs Chrome, Edge or Opera on a
+        desktop.</li>
+      <li><b>Bind the receiver</b> if it is not bound yet: Bind on the <a href="#controller">Controller</a> tab, then Bind
+        in the radio's ExpressLRS Lua script. A receiver already flashed with your bind phrase links by itself.</li>
+      <li><b>Check the mapping.</b> Move the sticks and switches and watch the channels. Change axes and buttons as
+        needed, then <b>Save to device</b>.</li>
+      <li><b>Fly.</b> The simulator sees an ordinary game controller with 8 axes and 36 buttons. No drivers are needed,
+        and this page does not need to stay open.</li>
+    </ol>
+  </section>
 
-  <section class="wide" data-page="rxfw" id="sec-rxfw">
-    <h2>Update the receiver's ExpressLRS firmware</h2>
-    <p class="muted">The dongle passes the ExpressLRS flasher straight through to the receiver, the way a flight controller
-      does. Use this to update the receiver, change its bind phrase or change its options.</p>
+  <section class="wide doc" data-page="docs" id="docs-flashing">
+    <h2>Dongle firmware</h2>
+    <h3>Which file</h3>
+    <div class="tbl"><table>
+      <tr><th>Build</th><th>For</th></tr>
+      <tr><td>Full</td><td>Any board with the receiver power switch, button and LED ring (the carrier board, the prototype).</td></tr>
+      <tr><td>Lite</td><td>An RP2040-Zero wired straight to the receiver: 5V, GND, GP0 to the receiver's RX pad, GP1 to its
+        TX pad. The receiver is on whenever USB is, and the power and power-cycle bind controls are hidden.</td></tr>
+    </table></div>
+    <h3>Updating from this page</h3>
+    <p><b>Update firmware</b> does everything in one click: it reboots the connected dongle into its bootloader, waits
+      for it, flashes and reboots. Hosted files are checksum-verified before flashing. Connect again a few seconds after
+      it finishes. Profiles and settings are kept.</p>
+    <p>A browser only lets a page open a USB device unprompted after you have picked it once. So the first time, the
+      status line asks you to click <b>2. Select device and flash</b> and choose <b>RP2 Boot</b>. After that it is one
+      click.</p>
+    <h3>Step by step</h3>
+    <p>For that first time, and for boards with no firmware. <b>1. Enter update mode</b> reboots a connected dongle into
+      its bootloader; with nothing connected, hold BOOT on the board while plugging it in instead. Then
+      <b>2. Select device and flash</b> opens the USB picker.</p>
+    <h3>Manual method</h3>
+    <p>Works in any browser and needs no driver. Download the UF2, put the board in update mode (Enter update mode, or
+      hold BOOT while plugging it in), and copy the file onto the <b>RPI-RP2</b> drive that appears. The board reboots
+      into the new firmware.</p>
+    <h3>Hide the RPI-RP2 drive</h3>
+    <p>Starts the bootloader without its drive, so Windows opens no Explorer window during an update. The manual method
+      cannot be used in that mode, and on Windows the bootloader may need the WinUSB driver installed once more for it.
+      If the dongle is not found, replug it and it starts normally.</p>
+  </section>
+
+  <section class="wide doc" data-page="docs" id="docs-windows">
+    <h2>Windows driver</h2>
+    <p>Using the dongle needs no driver. Updating it from this page needs WinUSB bound to the bootloader, once per PC.
+      The manual method avoids this.</p>
+    <ol class="steps">
+      <li>Download <a href="https://zadig.akeo.ie/" target="_blank" rel="noopener">Zadig</a> (one file, nothing to install).</li>
+      <li>Put the board in update mode: hold BOOT while plugging it in, or use "1. Enter update mode".</li>
+      <li>In Zadig, choose <b>Options &gt; List All Devices</b>.</li>
+      <li>Pick <b>RP2 Boot (Interface 1)</b> in the dropdown. Not Interface 0.</li>
+      <li>Check the target driver reads <b>WinUSB</b>, then click Install Driver (or Replace Driver).</li>
+      <li>Unplug and replug. "RP2 Boot" now shows in the browser's USB picker.</li>
+    </ol>
+    <p>If the picker stays empty, Device Manager shows "RP2 Boot" with a warning icon under "Other devices": the driver
+      is not bound yet.</p>
+    <p>To stop the Explorer window that opens in update mode, either tick "Hide the RPI-RP2 drive", or in Windows set
+      Settings &gt; Bluetooth &amp; devices &gt; AutoPlay &gt; Removable drive to "Take no action".</p>
+  </section>
+
+  <section class="wide doc" data-page="docs" id="docs-controller">
+    <h2>Profiles and mapping</h2>
+    <h3>Saving</h3>
+    <p>Mapping changes apply at once on the dongle but are lost at reboot until saved. <b>Save to device</b> writes them
+      to the active profile. "unsaved changes" shows while there is something to save. <b>Load defaults</b> resets the
+      current mapping; it is not stored until you save.</p>
+    <h3>Profiles</h3>
+    <p>The dongle holds 16 profiles, each with its own axes, buttons, throttle axis and failsafe time. Choosing an
+      <b>Active profile</b> loads it; unsaved changes are dropped, after a prompt. Pick a <b>Slot</b> and use
+      <b>Save here</b> to store the current mapping there and switch to it, with an optional name of up to 15 characters.
+      The active profile cannot be deleted; switch to another first.</p>
+    <p><b>Export</b> downloads every profile as one file. <b>Import</b> writes each profile in a file back to the slot it
+      came from, after a prompt naming the profiles it will replace. Slots the file does not mention are left alone.
+      Export refuses while there are unsaved changes. "Power receiver on plug-in" is one setting for the whole dongle
+      and is not in the file.</p>
+    <h3>Axes</h3>
+    <p>Each of the 8 axes follows one channel, optionally inverted, or "none" to stay centred. Default: X, Y, Z, Rx on
+      channels 1 to 4 (roll, pitch, throttle, yaw) and Ry, Rz, Slider, Dial on channels 5 to 8.</p>
+    <h3>Failsafe</h3>
+    <p>Failsafe starts when the receiver is off, when no channel data has arrived for the set time (default 100 ms), or
+      when the receiver reports a link quality of 0. The PC then gets all axes centred, the <b>throttle axis</b> at
+      minimum and no buttons, until good data returns. With no link, the channel bars on this page show the last values
+      received, not what the PC is getting.</p>
+    <h3>Buttons</h3>
+    <p>Each of the 36 buttons is pressed while one channel is in one position: low (below 1300 µs), mid (1300 to 1700)
+      or high (above 1700). Default: channels 5 to 16 give three buttons each. The table shows the first 12 and any
+      you have changed; "Show all 36" shows the rest.</p>
+    <p>In ExpressLRS Hybrid and Wide switch modes, channels 15 and 16 carry LQ and RSSI rather than switches. Either set
+      buttons 31 to 36 to "none", or run the radio in Full Res 16ch mode.</p>
+  </section>
+
+  <section class="wide doc" data-page="docs" id="docs-receiver">
+    <h2>Receiver</h2>
+    <h3>Power</h3>
+    <p><b>RX power</b> switches the receiver on and off, so the dongle can stay plugged in while you fly something else.
+      "Power receiver on plug-in" sets what happens when the dongle is plugged in. Lite builds have no power switch.</p>
+    <h3>Bind</h3>
+    <p><b>Bind</b> puts the receiver into bind mode. Then choose Bind in the radio's ExpressLRS Lua script: the receiver
+      takes on the radio's bind phrase and keeps it. <b>Bind (power cycle)</b> does three quick power cycles instead,
+      for receivers that ignore the command. A bind phrase cannot be typed into the receiver over this link; to set one
+      without the radio, <a href="#docs-receiver-update">reflash the receiver</a>.</p>
+    <h3>Model match</h3>
+    <p>Use the radio model's <b>Receiver number</b> when Model Match is on in the ExpressLRS Lua script, or Off when it
+      is not. The receiver stores the ID; load the receiver settings to see what it holds. A mismatch looks like a
+      receiver that sends nothing: radio on, no link, and the status light showing the slow blink and then the fast
+      flicker.</p>
+    <h3>Receiver settings</h3>
+    <p><b>Load from receiver</b> reads the settings the ExpressLRS Lua script shows for the receiver. This needs
+      ExpressLRS 4.0 or newer on the receiver, and the receiver must not be in WiFi mode. A change is stored by the
+      receiver straight away. Changing <b>Protocol</b> away from CRSF cuts the dongle off from the receiver, and can then
+      only be undone from the receiver's own WiFi page.</p>
+  </section>
+
+  <section class="wide doc" data-page="docs" id="docs-receiver-update">
+    <h2>Receiver firmware</h2>
+    <p>The dongle passes the ExpressLRS flasher straight through to the receiver, the way a flight controller does. Use
+      this to update the receiver, change its bind phrase or change its options.</p>
     <ol class="steps">
       <li><b>Switch your radio off.</b> With it on, stick data gets mixed into what the flasher reads, and the flash
         fails or sits on "Connecting".</li>
-      <li><b>Check the receiver has power.</b> On the button version the ring should be lit or blinking, not dark. On
+      <li><b>Check the receiver has power.</b> On the full version the ring should be lit or blinking, not dark. On
         the lite version it is on whenever the dongle is plugged in.</li>
-      <li><b>Free the serial port.</b> Only one page can use it at a time.
-        <button id="btn-rxfw-disconnect">Disconnect this page</button></li>
+      <li><b>Free the serial port.</b> Only one page can use it at a time: click Disconnect at the top, or on the
+        <a href="#receiver-update">RX flashing</a> tab.</li>
       <li><b>Open the flasher:</b> the
         <a href="https://expresslrs.github.io/web-flasher/" target="_blank" rel="noopener">ExpressLRS Web Flasher</a>
         in this browser, or the ExpressLRS Configurator app.</li>
@@ -267,9 +483,9 @@
           has older firmware. Check you picked the right receiver, then flash again and choose to flash anyway.</td></tr>
       <tr><td>"Cannot detect RX target", then "Connecting..." without end</td>
         <td>The flasher is not reaching the receiver. Check the radio is off and the receiver has power, then try
-          again. If it still fails, update the dongle's own firmware on the Dongle firmware tab.</td></tr>
+          again. If it still fails, update the dongle's own firmware on the Firmware tab.</td></tr>
       <tr><td>"Serial Receiver UART is inverted"</td>
-        <td>The dongle's firmware is too old. Update it on the Dongle firmware tab.</td></tr>
+        <td>The dongle's firmware is too old. Update it on the Firmware tab.</td></tr>
       <tr><td>A warning about the crystal frequency</td>
         <td>Harmless. The flasher estimates the receiver's clock from serial timing, which is slightly off through
           the dongle.</td></tr>
@@ -277,72 +493,83 @@
         <td>The receiver's bootloader is still intact. Switch the receiver off and on (or replug the dongle) and
           flash again.</td></tr>
     </table></div>
-    <p class="muted">Without the dongle: a receiver left powered for about a minute with no radio starts its own WiFi
-      hotspot, named "ExpressLRS RX" with password <b>expresslrs</b>, and can be updated from the page at 10.0.0.1.</p>
+    <p>Without the dongle: a receiver left powered for about a minute with no radio starts its own WiFi hotspot, named
+      "ExpressLRS RX" with password <b>expresslrs</b>, and can be updated from the page at 10.0.0.1.</p>
   </section>
 
-  <section class="wide" id="sec-firmware" data-page="fw">
-    <h2>Dongle firmware <span class="spacer"></span><span id="fw-current" class="muted"></span>
-      <button id="btn-reboot" title="Restart the dongle. Unsaved mapping changes are lost.">Reboot dongle</button>
-    </h2>
-    <div class="row" style="margin-bottom:8px">
-      <select id="fw-select"><option value="file">Choose a .uf2 file…</option></select>
-      <input type="file" id="fw-file" accept=".uf2" class="hidden">
-      <button id="btn-fw-pick">Browse…</button>
-      <button id="btn-fw-download">Download UF2</button>
-      <span class="spacer"></span>
-      <button id="btn-fw-auto" class="primary">Update firmware</button>
-    </div>
-    <div class="row" style="margin-bottom:8px">
-      <label class="muted"><input type="checkbox" id="cb-fw-nodrive"> Do not show the RPI-RP2 drive while updating</label>
-      <span class="spacer"></span>
-      <span class="muted">Step by step:</span>
-      <button id="btn-fw-step1">1. Enter update mode</button>
-      <button id="btn-fw-step2" disabled>2. Select device and flash</button>
-    </div>
-    <div id="fw-info" class="muted"></div>
-    <div class="progress"><i id="fw-bar"></i></div>
-    <div id="fw-status" class="muted">Pick a firmware, then Update firmware. The first time, the browser asks you to choose "RP2 Boot"; after that it is one click.</div>
-    <details style="margin-top:8px">
-      <summary>Flash log</summary>
-      <div id="fw-log" class="console" style="height:120px; margin-top:8px"></div>
-    </details>
-    <details style="margin-top:8px">
-      <summary>Manual method, no WebUSB needed</summary>
-      <ol>
-        <li>Download the UF2 above.</li>
-        <li>Put the board in update mode: <button id="btn-dfu" title="Reboot into the UF2 bootloader">Enter update mode</button>
-          or hold BOOT on the board while plugging it in. A drive named <b>RPI-RP2</b> appears.</li>
-        <li>Copy the UF2 onto that drive. The board reboots into the new firmware.</li>
-      </ol>
-      <p class="muted">Windows: updating from this page needs the WinUSB driver bound to "RP2 Boot (Interface 1)" with Zadig, once. See docs/WINDOWS.md. The manual method needs no driver.</p>
-      <p class="muted">"Do not show the RPI-RP2 drive" starts the bootloader without its drive, so no Explorer window opens. The manual method cannot be used in that mode, and on Windows the bootloader may need the WinUSB driver installed again for it. If the dongle is not found, replug it and it starts normally.</p>
-    </details>
+  <section class="wide doc" data-page="docs" id="docs-light">
+    <h2>Status light and button</h2>
+    <p>The ring in the button mirrors what the receiver's own LED would show. The module's onboard LED shows the same
+      pattern, and on lite builds it is the only light.</p>
+    <div class="tbl"><table>
+      <tr><th>Light</th><th>Meaning</th></tr>
+      <tr><td>Off</td><td>Receiver power is off.</td></tr>
+      <tr><td>Solid</td><td>Linked to the radio.</td></tr>
+      <tr><td>Slow blink</td><td>Receiver on, no radio in range.</td></tr>
+      <tr><td>Double blink</td><td>Bind mode.</td></tr>
+      <tr><td>Fast flicker</td><td>Nothing heard from the receiver for 30 seconds. It is in WiFi mode (it enters that by
+        itself after about a minute with no radio), has a model match mismatch, or is not responding.</td></tr>
+      <tr><td>Blip, then two flickers</td><td>Passthrough: the receiver is being flashed.</td></tr>
+    </table></div>
+    <h3>Button (full builds)</h3>
+    <div class="tbl"><table>
+      <tr><th>Press</th><th>Does</th></tr>
+      <tr><td>Short</td><td>Switches the receiver on or off.</td></tr>
+      <tr><td>Long, 1.5 seconds</td><td>Puts the receiver into bind mode.</td></tr>
+    </table></div>
   </section>
 
-  <section class="wide" data-page="console">
-    <h2>Console <span class="spacer"></span>
-      <label class="muted" style="font-weight:400"><input type="checkbox" id="cb-show-stream"> show channel stream</label>
-      <label class="muted" style="font-weight:400"><input type="checkbox" id="cb-show-poll"> show status polling</label>
-      <button id="btn-clear">Clear</button>
-    </h2>
-    <dl class="kv" style="margin-bottom:10px">
-      <dt>Frames ok / crc / timeout</dt><dd id="st-frames">–</dd>
-      <dt>HID sent / dropped</dt><dd id="st-hid">–</dd>
-    </dl>
-    <div id="console" class="console"></div>
-    <form id="form-cmd" class="row" style="margin-top:8px">
-      <input type="text" id="in-cmd" placeholder="command, e.g. status" style="flex:1" autocomplete="off">
-      <button type="submit">Send</button>
-    </form>
-    <p class="muted" style="margin-top:8px">Type <b>help</b> for the command list. The page asks the dongle for its status once a second to keep the
-      Controller tab current; those requests are left out of this log unless you tick "show status polling".</p>
+  <section class="wide doc" data-page="docs" id="docs-console">
+    <h2>Console</h2>
+    <p>The <a href="#console">Console</a> tab is a raw line to the dongle: plain-word commands, one JSON reply per line.
+      The same serial port answers any terminal program at any baud rate. Mapping changes made here also need
+      <code>save</code>.</p>
+<pre>help                          command list
+version                       product, version, variant
+status                        link, failsafe, LED state, counters
+channels                      16 raw channel values, LQ, RSSI, SNR
+stream on|off [ms]            send channels periodically (default 50 ms)
+map                           full mapping
+axis &lt;0-7&gt; &lt;ch&gt; [invert]      assign a channel to an axis (ch 0 = centre)
+button &lt;0-35&gt; &lt;ch&gt; &lt;low|mid|high|none&gt;
+throttle &lt;axis|none&gt;          axis forced low on failsafe
+failsafe &lt;20-250&gt;             gap in channel data, in ms, that starts failsafe
+profile                       list all 16 slots
+profile use &lt;1-16&gt;            switch profile; unsaved changes are dropped
+profile save &lt;1-16&gt; [name]    save the current mapping to a slot and switch to it
+profile name &lt;1-16&gt; &lt;name&gt;    rename
+profile delete &lt;1-16&gt;         empty a slot, not the active one
+rxpower on|off|toggle         receiver power now
+rxboot on|off                 receiver power at plug-in
+bind | bindcycle              bind mode, by command or by power cycling
+modelmatch &lt;0-63|off&gt;         set the receiver's model match ID
+rxinfo                        receiver name, version, number of settings
+rxparam &lt;id&gt; [value]          read or write one receiver setting
+rxprobe | rxraw | pins        wiring checks
+save | defaults | reboot
+dfu [nodrive]                 reboot into the bootloader</pre>
+    <p>Axes and buttons count from 0 in commands; the Controller tab numbers buttons from 1.</p>
+    <h3>Counters</h3>
+    <p><b>Frames ok / crc / timeout</b> counts the frames received from the receiver, the ones that failed their
+      checksum, and the ones that stopped partway. <b>HID sent / dropped</b> counts the reports sent to the PC and the
+      ones skipped because the PC had not yet taken the previous one.</p>
+    <h3>Wiring checks</h3>
+    <p>For a board that powers up but never links. <code>rxprobe</code> (full builds) power-cycles the receiver and
+      reports which pin it transmits on: ok, swapped, silent or bridged. <code>rxraw</code> shows the last bytes
+      received; frames from the receiver start <code>c8</code>. <code>pins</code> reads back the level on each pin the
+      board uses.</p>
+  </section>
+
+  <section class="wide doc" data-page="docs" id="docs-more">
+    <h2>Build guides and source</h2>
+    <ul>
+      <li class="guide hidden"><a href="guides/breadboard-build.html">Breadboard build, step by step</a></li>
+      <li class="guide hidden"><a href="guides/perfboard-layout.html">Perfboard layout, hole by hole</a></li>
+      <li><a href="https://github.com/ryan-johnson2/elrs-sim-rx" target="_blank" rel="noopener">Source, hardware files and
+        release notes on GitHub</a></li>
+    </ul>
   </section>
 </main>
-
-<footer>
-  Web Serial, Chromium browsers only. Nothing leaves your machine. <a href="#" id="link-mock">Try with a simulated device</a>.
-</footer>
 
 <script src="picoboot.js"></script>
 <script>
@@ -557,6 +784,8 @@ let lastCh = null;
 let frameTimes = [];
 let showAllButtons = false;
 let statusTimer = null;
+// Development only: ?mock runs the page against the simulated device above. Nothing in the page links to it.
+const MOCK = new URLSearchParams(location.search).has('mock');
 
 function log(line, cls) {
   if (cls === 'rx' && line.startsWith('{"ch":') && !$('cb-show-stream').checked) return;
@@ -642,7 +871,7 @@ function renderChannels(obj) {
   const fs = !obj.link;
   $('channels').classList.toggle('stale', fs);
   $('ch-rate').textContent = fs
-    ? 'No link. Bars show the last values received; the PC is getting the failsafe output (sticks centred, throttle low).'
+    ? 'No link: last values shown, PC gets failsafe'
     : `${(frameTimes.length / 2).toFixed(0)} updates/s · LQ ${obj.lq} · ${obj.rssi} dBm`;
   obj.ch.forEach((v, i) => {
     const pct = Math.max(0, Math.min(1, (v - 172) / (1811 - 172)));
@@ -722,6 +951,7 @@ async function connectWith(device, port) {
 }
 
 $('btn-connect').onclick = async () => {
+  if (MOCK) return connectWith(new MockDevice());
   if (!('serial' in navigator)) { $('no-serial').classList.remove('hidden'); return; }
   let port;
   try {
@@ -731,7 +961,6 @@ $('btn-connect').onclick = async () => {
 };
 $('btn-disconnect').onclick = () => dev?.disconnect();
 $('btn-rxfw-disconnect').onclick = () => dev?.disconnect();
-$('link-mock').onclick = (e) => { e.preventDefault(); if (dev) return; connectWith(new MockDevice()); };
 
 $('btn-rxpower').onclick = () => cmd('rxpower toggle').then(refreshStatus);
 $('btn-bind').onclick = () => cmd('bind').then(refreshStatus);
@@ -1058,13 +1287,18 @@ $('btn-clear').onclick = () => { $('console').innerHTML = ''; };
 $('form-cmd').onsubmit = (e) => { e.preventDefault(); const v = $('in-cmd').value.trim(); if (v) { cmd(v); $('in-cmd').value = ''; } };
 
 // ---------------------------------------------------------------------------
-// Tabs: one file, four pages, chosen by the URL hash so they can be linked to.
+// Tabs: one file, five pages, chosen by the URL hash so they can be linked to. Controller is
+// the default. #docs-<section> opens the Docs page at that section.
 // ---------------------------------------------------------------------------
-const PAGES = { '#main': 'main', '#receiver-update': 'rxfw', '#firmware': 'fw', '#console': 'console' };
+const PAGES = { '#controller': 'main', '#firmware': 'fw', '#receiver-update': 'rxfw', '#console': 'console', '#docs': 'docs' };
+const OLD_HASHES = { '#main': '#controller' };   // links from before the tabs moved
 function showPage() {
-  const page = PAGES[location.hash] || 'main';
+  const hash = OLD_HASHES[location.hash] || location.hash;
+  const section = hash.startsWith('#docs-') ? document.getElementById(hash.slice(1)) : null;
+  const page = PAGES[hash] || (section ? 'docs' : 'main');
   document.body.dataset.page = page;
   for (const a of document.querySelectorAll('#tabs a')) a.classList.toggle('on', a.dataset.page === page);
+  if (section) section.scrollIntoView(); else window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', showPage);
 showPage();
@@ -1086,6 +1320,12 @@ function fwLog(line) {
 function fwStatus(text, cls = 'muted') { const el = $('fw-status'); el.textContent = text; el.className = cls; }
 function fwProgress(frac) { $('fw-bar').style.width = `${Math.round(frac * 100)}%`; }
 
+// Short name for the dropdown, "Full v0.1.2". The commit, build time and size are on the line below it.
+function fwShortName(f) {
+  const kind = { full: 'Full', lite: 'Lite' }[f.variant] || f.label || f.name;
+  return `${kind} v${String(f.version).split('+')[0]}${f.channel === 'devel' ? ' (development)' : ''}`;
+}
+
 async function loadManifest() {
   if (location.protocol === 'file:') { $('fw-info').textContent = 'Opened as a local file: choose a .uf2 with Browse.'; return; }
   try {
@@ -1096,7 +1336,7 @@ async function loadManifest() {
     const fileOpt = sel.querySelector('option[value="file"]');
     for (const f of fwManifest.files) {
       const o = document.createElement('option');
-      o.value = f.path; o.textContent = `${f.label || f.name}  v${f.version}  ${f.commit}  ${f.built.replace('T', ' ').replace('Z', ' UTC')}`;
+      o.value = f.path; o.textContent = fwShortName(f);
       sel.insertBefore(o, fileOpt);       // manifest order, ahead of "Choose a .uf2 file"
     }
     sel.value = fwManifest.files[0].path;
@@ -1124,11 +1364,11 @@ async function selectFirmware() {
   fwLabel = `${f.name} v${f.version} (${f.commit})`;
   const sum = await sha256hex(fwBytes);
   const ok = !sum || sum === f.sha256;
-  $('fw-info').textContent = `${fwLabel}, ${f.size} bytes, ${f.board}${sum ? (ok ? ', checksum verified' : ', CHECKSUM MISMATCH') : ''}`;
+  $('fw-info').textContent = `${fwLabel}, built ${String(f.built).replace('T', ' ').replace('Z', ' UTC')}, ${f.size} bytes, ${f.board}${sum ? (ok ? ', checksum verified' : ', CHECKSUM MISMATCH') : ''}`;
   $('btn-fw-download').disabled = false;
   if (!ok) { fwBytes = null; fwStatus('Checksum mismatch, refusing to flash this file.', 'dirty'); return; }
   try { PB.parseUf2(fwBytes); } catch (e) { fwBytes = null; fwStatus('Not a valid RP2040 UF2: ' + e.message, 'dirty'); return; }
-  fwStatus('Firmware ready. Click Update firmware when you want to update a device.');
+  fwStatus('Firmware ready.');
 }
 
 $('fw-select').onchange = selectFirmware;
@@ -1137,7 +1377,7 @@ $('fw-file').onchange = async (e) => {
   const file = e.target.files[0]; if (!file) return;
   fwBytes = new Uint8Array(await file.arrayBuffer());
   fwLabel = file.name;
-  try { const p = PB.parseUf2(fwBytes); $('fw-info').textContent = `${file.name}, ${fwBytes.length} bytes, ${p.blocks.length} blocks`; fwStatus('Firmware ready. Click Update firmware when you want to update a device.'); $('btn-fw-download').disabled = false; }
+  try { const p = PB.parseUf2(fwBytes); $('fw-info').textContent = `${file.name}, ${fwBytes.length} bytes, ${p.blocks.length} blocks`; fwStatus('Firmware ready.'); $('btn-fw-download').disabled = false; }
   catch (err) { fwBytes = null; fwStatus('Not a valid RP2040 UF2: ' + err.message, 'dirty'); }
   $('fw-select').value = 'file';
 };
@@ -1196,7 +1436,7 @@ $('btn-fw-step2').onclick = async () => {
   } else {
     if (!navigator.usb) { fwStatus('This browser has no WebUSB. Use the manual method below.', 'dirty'); return; }
     try { usbDev = await PB.requestBootselDevice(navigator.usb); }
-    catch (e) { fwStatus('No device selected. If "RP2 Boot" was not listed, the board is not in update mode (or Windows needs the WinUSB driver, see below).', 'dirty'); return; }
+    catch (e) { fwStatus('No device selected. If "RP2 Boot" was not listed, the board is not in update mode (or Windows needs the WinUSB driver, see Docs).', 'dirty'); return; }
   }
   await flashWith(usbDev);
 };
@@ -1263,12 +1503,45 @@ $('btn-fw-auto').onclick = async () => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Tooltips: anything with data-tip, on hover or keyboard focus. One floating box, kept inside
+// the window so it never adds a scrollbar.
+// ---------------------------------------------------------------------------
+{
+  const box = document.createElement('div');
+  box.id = 'tipbox'; box.className = 'hidden'; box.setAttribute('role', 'tooltip');
+  document.body.appendChild(box);
+  for (const el of document.querySelectorAll('.tip')) { el.tabIndex = 0; el.setAttribute('role', 'img'); el.setAttribute('aria-label', el.dataset.tip); }
+  let shown = null;
+  const hide = () => { shown = null; box.classList.add('hidden'); };
+  const show = (el) => {
+    if (el === shown) return;
+    shown = el; box.textContent = el.dataset.tip; box.classList.remove('hidden');
+    const r = el.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight, vw = document.documentElement.clientWidth;
+    box.style.left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, vw - w - 8)) + 'px';
+    box.style.top = (r.bottom + 6 + h > innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+  };
+  const over = (e) => { const el = e.target.closest?.('[data-tip]'); if (el) show(el); else if (shown) hide(); };
+  document.addEventListener('mouseover', over);
+  // A mouse click also focuses a button; only keyboard focus (or a "?" mark) should open its tip.
+  document.addEventListener('focusin', (e) => { const el = e.target.closest?.('[data-tip]'); if (el && (el.classList.contains('tip') || e.target.matches(':focus-visible'))) show(el); });
+  document.addEventListener('focusout', hide);
+  document.addEventListener('mousedown', hide);
+  document.addEventListener('scroll', hide, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+}
+
 loadManifest();
+
+// The prototype build guides are only published with the development page. Offer them where they exist.
+if (location.protocol !== 'file:') fetch('guides/breadboard-build.html', { method: 'HEAD' }).then((r) => {
+  if (r.ok) for (const li of document.querySelectorAll('li.guide')) li.classList.remove('hidden');
+}).catch(() => {});
 
 buildChannels();
 setConnectedUi(false);
 if (!('serial' in navigator)) $('no-serial').classList.remove('hidden');
-if (location.search.includes('mock')) connectWith(new MockDevice());
+if (MOCK) connectWith(new MockDevice());
 </script>
 </body>
 </html>
